@@ -5,7 +5,7 @@
 mod handlers;
 mod state;
 
-use handlers::{gen, list, relations, search, show};
+use handlers::{gen, graph, list, relations, search, show};
 use sen::Router;
 use state::AppState;
 
@@ -41,6 +41,7 @@ async fn main() {
         // Relations commands
         .route("link", relations::link())
         .route("deps", relations::deps())
+        .route("graph", graph::graph())
         .with_state(state)
         .with_agent_mode(); // JSON output for LLM integration
 
