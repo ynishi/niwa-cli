@@ -6,15 +6,20 @@ use niwa_core::{Scope, StorageOperations};
 use sen::{Args, CliError, CliResult, State};
 use std::path::PathBuf;
 
-/// Generate Expertise from log file
+/// Generate Expertise from log file or text
 ///
 /// Usage:
 ///   niwa gen --file session.log --id rust-expert --scope personal
+///   niwa gen --text "Some knowledge..." --id quick-tip
 #[derive(Parser, Debug)]
 pub struct GenArgs {
     /// Log file path to generate expertise from
-    #[arg(short = 'f', long)]
-    pub file: PathBuf,
+    #[arg(short = 'f', long, conflicts_with = "text")]
+    pub file: Option<PathBuf>,
+
+    /// Direct text input (alternative to --file)
+    #[arg(short = 't', long, conflicts_with = "file")]
+    pub text: Option<String>,
 
     /// Expertise ID
     #[arg(long)]
@@ -30,9 +35,17 @@ pub async fn generate(
     state: State<AppState>,
     Args(args): Args<GenArgs>,
 ) -> CliResult<String> {
-    // Read log file
-    let log_content = std::fs::read_to_string(&args.file)
-        .map_err(|e| CliError::user(format!("Failed to read log file: {}", e)))?;
+    // Get content from file or text
+    let log_content = if let Some(file_path) = args.file {
+        std::fs::read_to_string(&file_path)
+            .map_err(|e| CliError::user(format!("Failed to read log file: {}", e)))?
+    } else if let Some(text) = args.text {
+        text
+    } else {
+        return Err(CliError::user(
+            "Either --file or --text must be provided".to_string(),
+        ));
+    };
 
     // Generate expertise
     let app = state.read().await;
