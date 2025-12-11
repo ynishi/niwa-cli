@@ -19,10 +19,7 @@ pub struct ListArgs {
 }
 
 #[sen::handler]
-pub async fn list(
-    state: State<AppState>,
-    Args(args): Args<ListArgs>,
-) -> CliResult<String> {
+pub async fn list(state: State<AppState>, Args(args): Args<ListArgs>) -> CliResult<String> {
     let app = state.read().await;
 
     let expertises = if let Some(scope) = args.scope {

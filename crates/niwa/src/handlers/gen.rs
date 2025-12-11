@@ -31,10 +31,7 @@ pub struct GenArgs {
 }
 
 #[sen::handler]
-pub async fn generate(
-    state: State<AppState>,
-    Args(args): Args<GenArgs>,
-) -> CliResult<String> {
+pub async fn generate(state: State<AppState>, Args(args): Args<GenArgs>) -> CliResult<String> {
     // Get content from file or text
     let log_content = if let Some(file_path) = args.file {
         std::fs::read_to_string(&file_path)
@@ -90,10 +87,7 @@ pub struct ImproveArgs {
 }
 
 #[sen::handler]
-pub async fn improve(
-    state: State<AppState>,
-    Args(args): Args<ImproveArgs>,
-) -> CliResult<String> {
+pub async fn improve(state: State<AppState>, Args(args): Args<ImproveArgs>) -> CliResult<String> {
     let app = state.read().await;
 
     // Get existing expertise

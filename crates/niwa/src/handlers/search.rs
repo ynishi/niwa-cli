@@ -22,10 +22,7 @@ pub struct SearchArgs {
 }
 
 #[sen::handler]
-pub async fn search(
-    state: State<AppState>,
-    Args(args): Args<SearchArgs>,
-) -> CliResult<String> {
+pub async fn search(state: State<AppState>, Args(args): Args<SearchArgs>) -> CliResult<String> {
     let mut options = SearchOptions::new();
     if let Some(limit) = args.limit {
         options = options.limit(limit);

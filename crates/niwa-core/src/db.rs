@@ -83,8 +83,7 @@ impl Database {
         // Use runtime migration loading instead of compile-time macro
         // This is essential for CLI/Desktop apps where migrations can be added
         // after the binary is built
-        let migrations_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("migrations");
+        let migrations_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
 
         sqlx::migrate::Migrator::new(migrations_path)
             .await

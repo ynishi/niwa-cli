@@ -1,15 +1,18 @@
 //! Interactive tutorial for NIWA CLI
 
-use sen::{Args, CliResult, State};
 use crate::state::AppState;
 use clap::Parser;
+use sen::{Args, CliResult, State};
 
 /// Show interactive tutorial for NIWA CLI
 #[derive(Parser, Debug)]
 pub struct TutorialArgs {}
 
 #[sen::handler]
-pub async fn tutorial(_state: State<AppState>, Args(_args): Args<TutorialArgs>) -> CliResult<String> {
+pub async fn tutorial(
+    _state: State<AppState>,
+    Args(_args): Args<TutorialArgs>,
+) -> CliResult<String> {
     let tutorial_text = r#"
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   NIWA Tutorial: Expertise Graph Management System

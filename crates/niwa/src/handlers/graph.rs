@@ -161,7 +161,11 @@ fn build_full_graph(
         }
     }
 
-    output.push_str(&format!("\nTotal: {} expertises, {} relations", expertises.len(), relations.len()));
+    output.push_str(&format!(
+        "\nTotal: {} expertises, {} relations",
+        expertises.len(),
+        relations.len()
+    ));
     output
 }
 

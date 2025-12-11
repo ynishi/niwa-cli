@@ -21,10 +21,7 @@ pub struct ShowArgs {
 }
 
 #[sen::handler]
-pub async fn show(
-    state: State<AppState>,
-    Args(args): Args<ShowArgs>,
-) -> CliResult<String> {
+pub async fn show(state: State<AppState>, Args(args): Args<ShowArgs>) -> CliResult<String> {
     let app = state.read().await;
 
     let expertise = app

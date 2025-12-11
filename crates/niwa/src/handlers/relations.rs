@@ -149,10 +149,7 @@ pub async fn deps(state: State<AppState>, Args(args): Args<DepsArgs>) -> CliResu
     }
 
     if !found {
-        return Err(CliError::user(format!(
-            "Expertise not found: {}",
-            args.id
-        )));
+        return Err(CliError::user(format!("Expertise not found: {}", args.id)));
     }
 
     // Get relations based on flags
@@ -211,8 +208,7 @@ pub async fn deps(state: State<AppState>, Args(args): Args<DepsArgs>) -> CliResu
 
         let metadata = relation
             .metadata
-            .as_ref()
-            .map(|s| s.as_str())
+            .as_deref()
             .unwrap_or("-");
 
         table.add_row(vec![

@@ -117,26 +117,27 @@ pub async fn garden(state: State<AppState>, Args(args): Args<GardenArgs>) -> Cli
     let app = state.read().await;
 
     match args.command {
-        Some(GardenCommand::Init { preset }) => {
-            handle_init(&app, &preset).await
-        }
-        Some(GardenCommand::Add { path, name }) => {
-            handle_add(&app, &path, name.as_deref()).await
-        }
-        Some(GardenCommand::List) => {
-            handle_list(&app).await
-        }
-        Some(GardenCommand::Remove { id }) => {
-            handle_remove(&app, id).await
-        }
+        Some(GardenCommand::Init { preset }) => handle_init(&app, &preset).await,
+        Some(GardenCommand::Add { path, name }) => handle_add(&app, &path, name.as_deref()).await,
+        Some(GardenCommand::List) => handle_list(&app).await,
+        Some(GardenCommand::Remove { id }) => handle_remove(&app, id).await,
         None => {
             // Scan mode
             if let Some(directory) = args.directory {
                 // Explicit directory specified
-                handle_scan(&app, &directory, args.scope, args.dry_run, args.limit, args.recent_days).await
+                handle_scan(
+                    &app,
+                    &directory,
+                    args.scope,
+                    args.dry_run,
+                    args.limit,
+                    args.recent_days,
+                )
+                .await
             } else {
                 // Scan all registered paths
-                handle_scan_registered(&app, args.scope, args.dry_run, args.limit, args.recent_days).await
+                handle_scan_registered(&app, args.scope, args.dry_run, args.limit, args.recent_days)
+                    .await
             }
         }
     }
@@ -146,8 +147,7 @@ async fn handle_init(app: &AppState, preset_name: &str) -> CliResult<String> {
     let preset = GardenPreset::from_str(preset_name)
         .map_err(|e| CliError::user(format!("{}\n\nAvailable presets: claude-code, cursor", e)))?;
 
-    let path = preset.get_path()
-        .map_err(|e| CliError::system(e))?;
+    let path = preset.get_path().map_err(CliError::system)?;
 
     // Check if path exists
     if !path.exists() {
@@ -265,13 +265,22 @@ async fn handle_remove(app: &AppState, id: i64) -> CliResult<String> {
     .map_err(|e| CliError::system(format!("Database error: {}", e)))?;
 
     if result.rows_affected() == 0 {
-        Err(CliError::user(format!("No monitoring path found with ID: {}", id)))
+        Err(CliError::user(format!(
+            "No monitoring path found with ID: {}",
+            id
+        )))
     } else {
         Ok(format!("✓ Removed monitoring path ID: {}", id))
     }
 }
 
-async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool, limit: Option<usize>, recent_days: Option<u64>) -> CliResult<String> {
+async fn handle_scan_registered(
+    app: &AppState,
+    scope: Scope,
+    dry_run: bool,
+    limit: Option<usize>,
+    recent_days: Option<u64>,
+) -> CliResult<String> {
     // Get all enabled paths
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
@@ -319,7 +328,14 @@ async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool, lim
     Ok(output)
 }
 
-async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bool, limit: Option<usize>, recent_days: Option<u64>) -> CliResult<String> {
+async fn handle_scan(
+    app: &AppState,
+    directory: &Path,
+    scope: Scope,
+    dry_run: bool,
+    limit: Option<usize>,
+    recent_days: Option<u64>,
+) -> CliResult<String> {
     // Verify directory exists
     if !directory.exists() {
         return Err(CliError::user(format!(
@@ -347,17 +363,20 @@ async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bo
 
     // Filter by recent_days if specified
     let filtered_files = if let Some(days) = recent_days {
-        let cutoff_time = std::time::SystemTime::now()
-            - std::time::Duration::from_secs(days * 24 * 60 * 60);
+        let cutoff_time =
+            std::time::SystemTime::now() - std::time::Duration::from_secs(days * 24 * 60 * 60);
 
-        session_files.into_iter().filter(|path| {
-            if let Ok(metadata) = std::fs::metadata(path) {
-                if let Ok(modified) = metadata.modified() {
-                    return modified >= cutoff_time;
+        session_files
+            .into_iter()
+            .filter(|path| {
+                if let Ok(metadata) = std::fs::metadata(path) {
+                    if let Ok(modified) = metadata.modified() {
+                        return modified >= cutoff_time;
+                    }
                 }
-            }
-            false
-        }).collect()
+                false
+            })
+            .collect()
     } else {
         session_files
     };
@@ -368,7 +387,7 @@ async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bo
     let mut unprocessed_files = Vec::new();
     for file_path in filtered_files {
         let hash = calculate_file_hash(&file_path)?;
-        let is_processed = is_file_processed(&app.db.pool(), &file_path, &hash).await?;
+        let is_processed = is_file_processed(app.db.pool(), &file_path, &hash).await?;
 
         if !is_processed {
             unprocessed_files.push((file_path, hash));
@@ -463,8 +482,8 @@ fn scan_session_files(dir: &Path) -> Result<Vec<PathBuf>, CliError> {
 
 /// Calculate SHA256 hash of file content
 fn calculate_file_hash(path: &Path) -> Result<String, CliError> {
-    let content = std::fs::read(path)
-        .map_err(|e| CliError::system(format!("Failed to read file: {}", e)))?;
+    let content =
+        std::fs::read(path).map_err(|e| CliError::system(format!("Failed to read file: {}", e)))?;
 
     let mut hasher = Sha256::new();
     hasher.update(&content);
@@ -510,8 +529,8 @@ async fn process_session_file(
     scope: Scope,
 ) -> Result<String, String> {
     // Read file content
-    let content = std::fs::read_to_string(file_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        std::fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     // Generate expertise ID from file name
     let expertise_id = generate_expertise_id(file_path);
