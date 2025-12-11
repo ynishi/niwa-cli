@@ -217,6 +217,76 @@ cargo check --workspace
 
 ---
 
+## 💡 Use Cases
+
+### As a Skill Management System
+
+NIWA can replace traditional "Skill" or "Expertise" management systems. Instead of exporting to external formats, **use NIWA CLI directly** to browse and query your knowledge.
+
+#### Scenario 1: "What was the NIWA architecture again?"
+
+```bash
+# Search for architecture-related knowledge
+$ niwa search "architecture"
+
+# Show detailed information
+$ niwa show niwa-architecture-detail
+
+# Browse all knowledge
+$ niwa list
+```
+
+#### Scenario 2: "Review this PR for NIWA Core"
+
+```bash
+# Find migration policy
+$ niwa search "migration"
+$ niwa show niwa-migration-policy
+
+# Check related knowledge
+$ niwa deps niwa-migration-policy
+
+# Visualize knowledge graph
+$ niwa graph
+```
+
+**Review checklist** (based on stored expertise):
+- ✅ Migration uses `ALTER TABLE ADD COLUMN` only?
+- ❌ No `DROP COLUMN` or `DROP TABLE`?
+- ✅ Uses runtime `Migrator::new()` instead of `migrate!()` macro?
+
+#### Scenario 3: Auto-learning from session logs
+
+```bash
+# Initialize garden monitoring (one-time setup)
+$ niwa garden init claude-code
+
+# Process recent sessions (last 5 days, max 10 files)
+$ niwa garden --recent-days 5 --limit 10
+
+# Check what was learned
+$ niwa list
+$ niwa tags
+```
+
+### As a Personal Knowledge Base
+
+```bash
+# Add quick tips
+$ niwa gen --id rust-error-handling --text "Use Result<T,E> for recoverable errors, panic! for bugs"
+
+# Extract from documentation
+$ niwa gen --id project-architecture --file ARCHITECTURE.md
+
+# Search when you need it
+$ niwa search "error handling"
+
+# Build knowledge graph
+$ niwa link rust-error-handling --to rust-best-practices --relation-type extends
+```
+
+---
+
 ## 📚 Examples
 
 ### Storage Operations

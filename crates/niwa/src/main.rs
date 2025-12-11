@@ -5,7 +5,7 @@
 mod handlers;
 mod state;
 
-use handlers::{garden, gen, graph, list, relations, search, show};
+use handlers::{garden, gen, graph, list, relations, search, show, tutorial};
 use sen::Router;
 use state::AppState;
 
@@ -30,6 +30,8 @@ async fn main() {
 
     // Build router
     let router = Router::new()
+        // Help & Tutorial
+        .route("tutorial", tutorial::tutorial())
         // Generation commands
         .route("gen", gen::generate())
         .route("improve", gen::improve())

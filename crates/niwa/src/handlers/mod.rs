@@ -7,3 +7,4 @@ pub mod list;
 pub mod relations;
 pub mod search;
 pub mod show;
+pub mod tutorial;
