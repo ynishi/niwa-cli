@@ -22,9 +22,7 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
 
     // Parse limit
     let limit = args.iter()
-        .skip_while(|s| s.as_str() != "--limit" && s.as_str() != "-l")
-        .skip(1)
-        .next()
+        .skip_while(|s| s.as_str() != "--limit" && s.as_str() != "-l").nth(1)
         .and_then(|s| s.parse::<usize>().ok());
 
     let mut options = SearchOptions::new();

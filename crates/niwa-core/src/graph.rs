@@ -346,7 +346,7 @@ impl GraphOperations {
         let mut graph: HashMap<String, Vec<String>> = HashMap::new();
 
         for (from_id, to_id) in rows {
-            graph.entry(from_id).or_insert_with(Vec::new).push(to_id);
+            graph.entry(from_id).or_default().push(to_id);
         }
 
         Ok(graph)

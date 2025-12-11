@@ -121,10 +121,10 @@ impl QueryBuilder {
         sql.push_str(" ORDER BY e.updated_at DESC");
 
         // Add limit and offset
-        if let Some(limit) = options.limit {
+        if options.limit.is_some() {
             sql.push_str(" LIMIT ?");
         }
-        if let Some(offset) = options.offset {
+        if options.offset.is_some() {
             sql.push_str(" OFFSET ?");
         }
 
@@ -133,7 +133,7 @@ impl QueryBuilder {
 
         // Bind parameters
         query_builder = query_builder.bind(query);
-        if let Some(scope) = options.scope {
+        if let Some(scope) = &options.scope {
             query_builder = query_builder.bind(scope.as_str());
         }
         for tag in &options.tags {
@@ -184,7 +184,7 @@ impl QueryBuilder {
         sql.push(')');
 
         // Add scope filter
-        if let Some(scope) = options.scope {
+        if options.scope.is_some() {
             sql.push_str(" AND e.scope = ?");
         }
 
@@ -208,7 +208,7 @@ impl QueryBuilder {
         }
 
         // Bind scope
-        if let Some(scope) = options.scope {
+        if let Some(scope) = &options.scope {
             query_builder = query_builder.bind(scope.as_str());
         }
 

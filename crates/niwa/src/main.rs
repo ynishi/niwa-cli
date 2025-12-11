@@ -8,7 +8,6 @@ mod state;
 use handlers::{gen, list, search, show};
 use sen::Router;
 use state::AppState;
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {
@@ -50,10 +49,8 @@ async fn main() {
     // Output
     if response.agent_mode {
         println!("{}", response.to_agent_json());
-    } else {
-        if !response.output.is_empty() {
-            println!("{}", response.output);
-        }
+    } else if !response.output.is_empty() {
+        println!("{}", response.output);
     }
 
     std::process::exit(response.exit_code);

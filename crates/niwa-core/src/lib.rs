@@ -12,7 +12,7 @@
 //! ## Example
 //!
 //! ```no_run
-//! use niwa_core::{Database, Expertise, Scope};
+//! use niwa_core::{Database, Expertise, Scope, SearchOptions, StorageOperations};
 //!
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
@@ -20,13 +20,14 @@
 //!     let db = Database::open("~/.niwa/graph.db").await?;
 //!
 //!     // Create expertise
-//!     let expertise = Expertise::new("rust-expert", "1.0.0");
+//!     let mut expertise = Expertise::new("rust-expert", "1.0.0");
+//!     expertise.metadata.scope = Scope::Personal;
 //!
 //!     // Store
-//!     db.storage().create(expertise, Scope::Personal).await?;
+//!     db.storage().create(expertise).await?;
 //!
 //!     // Query
-//!     let results = db.query().search("rust error handling").await?;
+//!     let results = db.query().search("rust error handling", SearchOptions::default()).await?;
 //!
 //!     Ok(())
 //! }

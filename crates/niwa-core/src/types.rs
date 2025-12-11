@@ -12,8 +12,10 @@ pub use llm_toolkit_expertise::{
 /// Scope for expertise organization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum Scope {
     /// Personal expertise (user-specific)
+    #[default]
     Personal,
     /// Company expertise (organization-wide)
     Company,
@@ -53,11 +55,6 @@ impl fmt::Display for Scope {
     }
 }
 
-impl Default for Scope {
-    fn default() -> Self {
-        Scope::Personal
-    }
-}
 
 /// Expertise with NIWA-specific metadata
 ///

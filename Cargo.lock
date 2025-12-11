@@ -1219,6 +1219,7 @@ name = "niwa-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "llm-toolkit",
  "llm-toolkit-expertise",

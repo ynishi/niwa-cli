@@ -130,9 +130,7 @@ fn parse_improve_args(args: &[String]) -> Result<(String, String), CliError> {
 
     // Find instruction
     let instruction = args.iter()
-        .skip_while(|s| s.as_str() != "--instruction" && s.as_str() != "-i")
-        .skip(1)
-        .next()
+        .skip_while(|s| s.as_str() != "--instruction" && s.as_str() != "-i").nth(1)
         .ok_or_else(|| CliError::user("Missing required argument: --instruction"))?
         .clone();
 

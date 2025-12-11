@@ -98,8 +98,6 @@ pub async fn tags(state: State<AppState>) -> CliResult<String> {
 
 fn parse_scope_arg(args: &[String]) -> Option<Scope> {
     args.iter()
-        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s")
-        .skip(1)
-        .next()
+        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s").nth(1)
         .and_then(|s| Scope::from_str(s).ok())
 }

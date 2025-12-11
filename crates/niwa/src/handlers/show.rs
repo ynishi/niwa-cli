@@ -21,9 +21,7 @@ pub async fn show(state: State<AppState>) -> CliResult<String> {
 
     // Get scope
     let scope = args.iter()
-        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s")
-        .skip(1)
-        .next()
+        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s").nth(1)
         .and_then(|s| Scope::from_str(s).ok())
         .unwrap_or(Scope::Personal);
 
@@ -37,9 +35,9 @@ pub async fn show(state: State<AppState>) -> CliResult<String> {
 
     // Format output
     let mut output = String::new();
-    output.push_str(&format!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+    output.push_str("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
     output.push_str(&format!("  Expertise: {}\n", expertise.id()));
-    output.push_str(&format!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"));
+    output.push_str("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
 
     output.push_str(&format!("Version:     {}\n", expertise.version()));
     output.push_str(&format!("Scope:       {}\n", expertise.metadata.scope));
@@ -54,7 +52,7 @@ pub async fn show(state: State<AppState>) -> CliResult<String> {
 
     output.push_str(&format!("\nFragments:   {} total\n", expertise.inner.content.len()));
 
-    output.push_str(&format!("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"));
+    output.push_str("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
 
     Ok(output)
 }
@@ -62,6 +60,6 @@ pub async fn show(state: State<AppState>) -> CliResult<String> {
 fn format_timestamp(ts: i64) -> String {
     use chrono::{DateTime, Utc};
     let dt = DateTime::<Utc>::from_timestamp(ts, 0)
-        .unwrap_or_else(|| Utc::now());
+        .unwrap_or_else(Utc::now);
     dt.format("%Y-%m-%d %H:%M:%S UTC").to_string()
 }

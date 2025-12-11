@@ -1,10 +1,12 @@
 //! Storage operations for Expertise CRUD
 
 use crate::{Error, Expertise, Result, Scope};
+use async_trait::async_trait;
 use sqlx::SqlitePool;
 use tracing::{debug, info};
 
 /// Storage operations interface
+#[async_trait]
 pub trait StorageOperations {
     /// Create a new expertise
     async fn create(&self, expertise: Expertise) -> Result<()>;
@@ -41,6 +43,7 @@ impl Storage {
     }
 }
 
+#[async_trait]
 impl StorageOperations for Storage {
     async fn create(&self, expertise: Expertise) -> Result<()> {
         let id = expertise.id();
