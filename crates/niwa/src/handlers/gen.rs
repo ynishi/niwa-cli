@@ -48,11 +48,11 @@ pub async fn generate(state: State<AppState>) -> CliResult<String> {
 /// Improve existing Expertise
 ///
 /// Usage:
-///   niwa improve rust-expert --instruction "Add error handling examples"
+///   niwa improve rust-expert --instruction "Add error handling examples" --scope personal
 pub async fn improve(state: State<AppState>) -> CliResult<String> {
     let args: Vec<String> = std::env::args().collect();
 
-    let (id, instruction) = parse_improve_args(&args)?;
+    let (id, instruction, scope) = parse_improve_args(&args)?;
 
     let app = state.read().await;
 
@@ -60,10 +60,10 @@ pub async fn improve(state: State<AppState>) -> CliResult<String> {
     let expertise = app
         .db
         .storage()
-        .get(&id, Scope::Personal) // TODO: Support other scopes
+        .get(&id, scope)
         .await
         .map_err(|e| CliError::system(format!("Database error: {}", e)))?
-        .ok_or_else(|| CliError::user(format!("Expertise not found: {}", id)))?;
+        .ok_or_else(|| CliError::user(format!("Expertise not found: {} (scope: {})", id, scope)))?;
 
     // Improve it
     let improved = app
@@ -126,7 +126,7 @@ fn parse_gen_args(args: &[String]) -> Result<(PathBuf, String, Scope), CliError>
     Ok((file, id, scope))
 }
 
-fn parse_improve_args(args: &[String]) -> Result<(String, String), CliError> {
+fn parse_improve_args(args: &[String]) -> Result<(String, String, Scope), CliError> {
     // Find the ID (first non-flag argument after "improve")
     let id = args
         .iter()
@@ -144,5 +144,23 @@ fn parse_improve_args(args: &[String]) -> Result<(String, String), CliError> {
         .ok_or_else(|| CliError::user("Missing required argument: --instruction"))?
         .clone();
 
-    Ok((id, instruction))
+    // Find scope (optional, defaults to Personal)
+    let scope = args
+        .iter()
+        .position(|s| s.as_str() == "--scope" || s.as_str() == "-s")
+        .and_then(|pos| args.get(pos + 1))
+        .map(|s| Scope::from_str(s))
+        .transpose()
+        .map_err(|_| {
+            CliError::user(format!(
+                "Invalid scope: {}",
+                args.iter()
+                    .position(|s| s.as_str() == "--scope" || s.as_str() == "-s")
+                    .and_then(|pos| args.get(pos + 1))
+                    .unwrap()
+            ))
+        })?
+        .unwrap_or(Scope::Personal);
+
+    Ok((id, instruction, scope))
 }
