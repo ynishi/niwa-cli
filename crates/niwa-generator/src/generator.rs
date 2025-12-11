@@ -58,7 +58,10 @@ impl ExpertiseGenerator {
 
     /// Create a new ExpertiseGenerator with custom options
     pub async fn with_options(options: GenerationOptions) -> Result<Self> {
-        info!("Initializing ExpertiseGenerator with model: {}", options.model);
+        info!(
+            "Initializing ExpertiseGenerator with model: {}",
+            options.model
+        );
         Ok(Self { options })
     }
 
@@ -115,8 +118,11 @@ impl ExpertiseGenerator {
 
         match AgentTrait::execute(&agent, prompt.into()).await {
             Ok(response) => {
-                info!("Successfully extracted expertise: {} tags, {} fragments",
-                      response.tags.len(), response.fragments.len());
+                info!(
+                    "Successfully extracted expertise: {} tags, {} fragments",
+                    response.tags.len(),
+                    response.fragments.len()
+                );
 
                 // Convert ExpertiseResponse to Expertise
                 let mut expertise = Expertise::new(id, "1.0.0");
@@ -127,9 +133,12 @@ impl ExpertiseGenerator {
                 // Add text fragments
                 use llm_toolkit_expertise::{KnowledgeFragment, WeightedFragment};
                 for fragment_text in response.fragments {
-                    expertise.inner.content.push(WeightedFragment::new(
-                        KnowledgeFragment::Text(fragment_text),
-                    ));
+                    expertise
+                        .inner
+                        .content
+                        .push(WeightedFragment::new(KnowledgeFragment::Text(
+                            fragment_text,
+                        )));
                 }
 
                 Ok(expertise)
@@ -217,9 +226,12 @@ impl ExpertiseGenerator {
                 // Add new fragments
                 use llm_toolkit_expertise::WeightedFragment;
                 for fragment_text in response.new_fragments {
-                    improved.inner.content.push(WeightedFragment::new(
-                        KnowledgeFragment::Text(fragment_text),
-                    ));
+                    improved
+                        .inner
+                        .content
+                        .push(WeightedFragment::new(KnowledgeFragment::Text(
+                            fragment_text,
+                        )));
                 }
 
                 // Increment version
@@ -233,7 +245,10 @@ impl ExpertiseGenerator {
             }
             Err(e) => {
                 // Agent error - return original expertise with version bump
-                debug!("LLM improvement failed: {:?}, returning original with version bump", e);
+                debug!(
+                    "LLM improvement failed: {:?}, returning original with version bump",
+                    e
+                );
                 let mut improved = expertise;
                 let version_parts: Vec<&str> = improved.version().split('.').collect();
                 if version_parts.len() >= 2 {
@@ -283,7 +298,10 @@ impl ExpertiseGenerator {
         domain: &str,
         scope: Scope,
     ) -> Result<Expertise> {
-        info!("Generating expertise interactively: id={}, domain={}", id, domain);
+        info!(
+            "Generating expertise interactively: id={}, domain={}",
+            id, domain
+        );
 
         // Build prompt for the agent
         let mut prompt = format!(
@@ -320,9 +338,12 @@ impl ExpertiseGenerator {
                 // Add fragments
                 use llm_toolkit_expertise::{KnowledgeFragment, WeightedFragment};
                 for fragment_text in response.fragments {
-                    expertise.inner.content.push(WeightedFragment::new(
-                        KnowledgeFragment::Text(fragment_text),
-                    ));
+                    expertise
+                        .inner
+                        .content
+                        .push(WeightedFragment::new(KnowledgeFragment::Text(
+                            fragment_text,
+                        )));
                 }
 
                 // Optionally store related_areas as metadata (if needed)
@@ -390,7 +411,10 @@ impl ExpertiseGenerator {
                 );
                 debug!("Merge summary: {}", response.merge_summary);
                 if !response.conflicts_found.is_empty() {
-                    info!("Conflicts found during merge: {:?}", response.conflicts_found);
+                    info!(
+                        "Conflicts found during merge: {:?}",
+                        response.conflicts_found
+                    );
                 }
 
                 // Convert response to Expertise
@@ -402,9 +426,12 @@ impl ExpertiseGenerator {
                 // Add fragments
                 use llm_toolkit_expertise::{KnowledgeFragment, WeightedFragment};
                 for fragment_text in response.fragments {
-                    merged.inner.content.push(WeightedFragment::new(
-                        KnowledgeFragment::Text(fragment_text),
-                    ));
+                    merged
+                        .inner
+                        .content
+                        .push(WeightedFragment::new(KnowledgeFragment::Text(
+                            fragment_text,
+                        )));
                 }
 
                 Ok(merged)
@@ -458,9 +485,7 @@ mod tests {
         let expertise = Expertise::new("test-id", "1.0.0");
 
         // This test requires actual LLM integration
-        let result = generator
-            .improve(expertise, "Add more examples")
-            .await;
+        let result = generator.improve(expertise, "Add more examples").await;
 
         // For now, we just verify that the method returns Ok or Err
         match result {

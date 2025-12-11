@@ -33,13 +33,11 @@ async fn main() {
         // Generation commands
         .route("gen", gen::generate)
         .route("improve", gen::improve)
-
         // Query commands
         .route("list", list::list)
         .route("show", show::show)
         .route("search", search::search)
         .route("tags", list::tags)
-
         .with_state(state)
         .with_agent_mode(); // JSON output for LLM integration
 

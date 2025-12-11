@@ -111,6 +111,10 @@ all: check test build ## Run check, test, and build
 ci: fmt-check clippy test ## Run all CI checks (format, clippy, test)
 	@echo "$(COLOR_GREEN)✓ All CI checks passed$(COLOR_RESET)"
 
+.PHONY: preflight
+preflight: fmt clippy build test ## Run all preflight checks (fmt, clippy, build, test)
+	@echo "$(COLOR_GREEN)✓ All preflight checks passed$(COLOR_RESET)"
+
 .PHONY: dev-setup
 dev-setup: ## Setup development environment
 	@echo "$(COLOR_YELLOW)Setting up development environment...$(COLOR_RESET)"

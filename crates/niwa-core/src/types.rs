@@ -2,12 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 
 // Re-export from llm-toolkit-expertise
 // Note: llm-toolkit-expertise v0.2.1 is a separate crate (deprecated but functional)
-pub use llm_toolkit_expertise::{
-    Expertise as LlmExpertise, KnowledgeFragment, WeightedFragment,
-};
+pub use llm_toolkit_expertise::{Expertise as LlmExpertise, KnowledgeFragment, WeightedFragment};
 
 /// Scope for expertise organization
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +22,19 @@ pub enum Scope {
     Project,
 }
 
+impl FromStr for Scope {
+    type Err = crate::Error;
+
+    fn from_str(s: &str) -> Result<Self, crate::Error> {
+        match s.to_lowercase().as_str() {
+            "personal" => Ok(Scope::Personal),
+            "company" => Ok(Scope::Company),
+            "project" => Ok(Scope::Project),
+            _ => Err(crate::Error::InvalidScope(s.to_string())),
+        }
+    }
+}
+
 impl Scope {
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
@@ -30,16 +42,6 @@ impl Scope {
             Scope::Personal => "personal",
             Scope::Company => "company",
             Scope::Project => "project",
-        }
-    }
-
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self, crate::Error> {
-        match s.to_lowercase().as_str() {
-            "personal" => Ok(Scope::Personal),
-            "company" => Ok(Scope::Company),
-            "project" => Ok(Scope::Project),
-            _ => Err(crate::Error::InvalidScope(s.to_string())),
         }
     }
 
@@ -54,7 +56,6 @@ impl fmt::Display for Scope {
         write!(f, "{}", self.as_str())
     }
 }
-
 
 /// Expertise with NIWA-specific metadata
 ///

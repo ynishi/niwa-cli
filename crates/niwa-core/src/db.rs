@@ -117,14 +117,14 @@ impl Database {
     /// Expand tilde in path
     fn expand_path<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
         let path = path.as_ref();
-        let path_str = path.to_str().ok_or_else(|| {
-            Error::Other(format!("Invalid path: {}", path.display()))
-        })?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| Error::Other(format!("Invalid path: {}", path.display())))?;
 
-        if path_str.starts_with("~/") {
+        if let Some(stripped) = path_str.strip_prefix("~/") {
             let home = std::env::var("HOME")
                 .map_err(|_| Error::Other("HOME environment variable not set".to_string()))?;
-            Ok(PathBuf::from(home).join(&path_str[2..]))
+            Ok(PathBuf::from(home).join(stripped))
         } else {
             Ok(path.to_path_buf())
         }
@@ -156,7 +156,7 @@ mod tests {
 
         // Verify tables exist
         let result: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='expertises'"
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='expertises'",
         )
         .fetch_one(db.pool())
         .await

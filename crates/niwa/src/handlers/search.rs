@@ -14,15 +14,18 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
     let args: Vec<String> = std::env::args().collect();
 
     // Get query (first non-flag argument after "search")
-    let query = args.iter()
+    let query = args
+        .iter()
         .skip_while(|s| s.as_str() != "search")
         .skip(1)
         .find(|s| !s.starts_with('-'))
         .ok_or_else(|| CliError::user("Missing search query"))?;
 
     // Parse limit
-    let limit = args.iter()
-        .skip_while(|s| s.as_str() != "--limit" && s.as_str() != "-l").nth(1)
+    let limit = args
+        .iter()
+        .skip_while(|s| s.as_str() != "--limit" && s.as_str() != "-l")
+        .nth(1)
         .and_then(|s| s.parse::<usize>().ok());
 
     let mut options = SearchOptions::new();
@@ -32,7 +35,9 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
 
     let app = state.read().await;
 
-    let results = app.db.query()
+    let results = app
+        .db
+        .query()
         .search(query, options)
         .await
         .map_err(|e| CliError::system(format!("Search failed: {}", e)))?;
@@ -62,12 +67,7 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
             description
         };
 
-        table.add_row(vec![
-            exp.id(),
-            exp.version(),
-            &tags,
-            &truncated_desc,
-        ]);
+        table.add_row(vec![exp.id(), exp.version(), &tags, &truncated_desc]);
     }
 
     Ok(format!(

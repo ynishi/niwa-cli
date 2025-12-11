@@ -71,9 +71,7 @@ For specialized knowledge, use "Conditional" with task_types or user_states.
 
 Generate the complete Expertise object following the schema.
 "#,
-        log_content,
-        id,
-        description
+        log_content, id, description
     )
 }
 

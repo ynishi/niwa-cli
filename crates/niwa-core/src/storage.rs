@@ -391,7 +391,11 @@ mod tests {
         expertise.inner.version = "2.0.0".to_string();
         storage.update(expertise).await.unwrap();
 
-        let retrieved = storage.get("test-id", Scope::Personal).await.unwrap().unwrap();
+        let retrieved = storage
+            .get("test-id", Scope::Personal)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(retrieved.version(), "2.0.0");
     }
 

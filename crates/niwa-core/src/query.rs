@@ -111,9 +111,7 @@ impl QueryBuilder {
         // Add tag filters
         if !options.tags.is_empty() {
             for tag in &options.tags {
-                sql.push_str(
-                    " AND e.id IN (SELECT expertise_id FROM tags WHERE tag = ?)",
-                );
+                sql.push_str(" AND e.id IN (SELECT expertise_id FROM tags WHERE tag = ?)");
                 params.push(Box::new(tag.clone()));
             }
         }
@@ -158,7 +156,11 @@ impl QueryBuilder {
     }
 
     /// Filter expertises by tags
-    pub async fn filter_by_tags(&self, tags: Vec<String>, options: SearchOptions) -> Result<Vec<Expertise>> {
+    pub async fn filter_by_tags(
+        &self,
+        tags: Vec<String>,
+        options: SearchOptions,
+    ) -> Result<Vec<Expertise>> {
         debug!("Filtering by tags: {:?}", tags);
 
         if tags.is_empty() {
@@ -189,7 +191,10 @@ impl QueryBuilder {
         }
 
         // Group by to ensure all tags match (AND condition)
-        sql.push_str(&format!(" GROUP BY e.id HAVING COUNT(DISTINCT t.tag) = {}", tags.len()));
+        sql.push_str(&format!(
+            " GROUP BY e.id HAVING COUNT(DISTINCT t.tag) = {}",
+            tags.len()
+        ));
         sql.push_str(" ORDER BY e.updated_at DESC");
 
         // Add limit and offset
@@ -253,7 +258,10 @@ impl QueryBuilder {
 
         let rows = query_builder.fetch_all(&self.pool).await?;
 
-        Ok(rows.into_iter().map(|(tag, count)| (tag, count as usize)).collect())
+        Ok(rows
+            .into_iter()
+            .map(|(tag, count)| (tag, count as usize))
+            .collect())
     }
 
     /// Count total expertises
@@ -325,12 +333,20 @@ mod tests {
 
         // Filter by single tag
         let options = SearchOptions::new();
-        let results = db.query().filter_by_tags(vec!["rust".to_string()], options).await.unwrap();
+        let results = db
+            .query()
+            .filter_by_tags(vec!["rust".to_string()], options)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 2);
 
         // Filter by multiple tags (AND condition)
         let options = SearchOptions::new();
-        let results = db.query().filter_by_tags(vec!["rust".to_string(), "async".to_string()], options).await.unwrap();
+        let results = db
+            .query()
+            .filter_by_tags(vec!["rust".to_string(), "async".to_string()], options)
+            .await
+            .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id(), "exp-1");
     }

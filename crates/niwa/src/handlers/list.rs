@@ -4,6 +4,7 @@ use crate::state::AppState;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
 use niwa_core::{Scope, StorageOperations};
 use sen::{CliError, CliResult, State};
+use std::str::FromStr;
 
 /// List all expertises
 ///
@@ -58,7 +59,11 @@ pub async fn list(state: State<AppState>) -> CliResult<String> {
         ]);
     }
 
-    Ok(format!("\n{}\n\nTotal: {} expertises", table, expertises.len()))
+    Ok(format!(
+        "\n{}\n\nTotal: {} expertises",
+        table,
+        expertises.len()
+    ))
 }
 
 /// List all tags
@@ -68,7 +73,9 @@ pub async fn list(state: State<AppState>) -> CliResult<String> {
 pub async fn tags(state: State<AppState>) -> CliResult<String> {
     let app = state.read().await;
 
-    let tags = app.db.query()
+    let tags = app
+        .db
+        .query()
         .list_tags(None)
         .await
         .map_err(|e| CliError::system(format!("Failed to list tags: {}", e)))?;
@@ -98,6 +105,7 @@ pub async fn tags(state: State<AppState>) -> CliResult<String> {
 
 fn parse_scope_arg(args: &[String]) -> Option<Scope> {
     args.iter()
-        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s").nth(1)
+        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s")
+        .nth(1)
         .and_then(|s| Scope::from_str(s).ok())
 }

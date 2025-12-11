@@ -4,6 +4,7 @@ use crate::state::AppState;
 use niwa_core::{Scope, StorageOperations};
 use sen::{CliError, CliResult, State};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 /// Generate Expertise from log file
 ///
@@ -22,13 +23,15 @@ pub async fn generate(state: State<AppState>) -> CliResult<String> {
 
     // Generate expertise
     let app = state.read().await;
-    let expertise = app.generator
+    let expertise = app
+        .generator
         .generate_from_log(&log_content, &id, scope)
         .await
         .map_err(|e| CliError::system(format!("Failed to generate expertise: {}", e)))?;
 
     // Store in database
-    app.db.storage()
+    app.db
+        .storage()
         .create(expertise.clone())
         .await
         .map_err(|e| CliError::system(format!("Failed to store expertise: {}", e)))?;
@@ -54,20 +57,24 @@ pub async fn improve(state: State<AppState>) -> CliResult<String> {
     let app = state.read().await;
 
     // Get existing expertise
-    let expertise = app.db.storage()
+    let expertise = app
+        .db
+        .storage()
         .get(&id, Scope::Personal) // TODO: Support other scopes
         .await
         .map_err(|e| CliError::system(format!("Database error: {}", e)))?
         .ok_or_else(|| CliError::user(format!("Expertise not found: {}", id)))?;
 
     // Improve it
-    let improved = app.generator
+    let improved = app
+        .generator
         .improve(expertise, &instruction)
         .await
         .map_err(|e| CliError::system(format!("Failed to improve expertise: {}", e)))?;
 
     // Update in database
-    app.db.storage()
+    app.db
+        .storage()
         .update(improved.clone())
         .await
         .map_err(|e| CliError::system(format!("Failed to update expertise: {}", e)))?;
@@ -121,7 +128,8 @@ fn parse_gen_args(args: &[String]) -> Result<(PathBuf, String, Scope), CliError>
 
 fn parse_improve_args(args: &[String]) -> Result<(String, String), CliError> {
     // Find the ID (first non-flag argument after "improve")
-    let id = args.iter()
+    let id = args
+        .iter()
         .skip_while(|s| s.as_str() != "improve")
         .skip(1)
         .find(|s| !s.starts_with('-'))
@@ -129,8 +137,10 @@ fn parse_improve_args(args: &[String]) -> Result<(String, String), CliError> {
         .clone();
 
     // Find instruction
-    let instruction = args.iter()
-        .skip_while(|s| s.as_str() != "--instruction" && s.as_str() != "-i").nth(1)
+    let instruction = args
+        .iter()
+        .skip_while(|s| s.as_str() != "--instruction" && s.as_str() != "-i")
+        .nth(1)
         .ok_or_else(|| CliError::user("Missing required argument: --instruction"))?
         .clone();
 

@@ -4,6 +4,7 @@ use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 use tracing::debug;
 
 /// Relation type between expertises
@@ -20,6 +21,20 @@ pub enum RelationType {
     Requires,
 }
 
+impl FromStr for RelationType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_lowercase().as_str() {
+            "uses" => Ok(RelationType::Uses),
+            "extends" => Ok(RelationType::Extends),
+            "conflicts" => Ok(RelationType::Conflicts),
+            "requires" => Ok(RelationType::Requires),
+            _ => Err(Error::InvalidRelationType(s.to_string())),
+        }
+    }
+}
+
 impl RelationType {
     /// Convert to string representation
     pub fn as_str(&self) -> &'static str {
@@ -28,17 +43,6 @@ impl RelationType {
             RelationType::Extends => "extends",
             RelationType::Conflicts => "conflicts",
             RelationType::Requires => "requires",
-        }
-    }
-
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self> {
-        match s.to_lowercase().as_str() {
-            "uses" => Ok(RelationType::Uses),
-            "extends" => Ok(RelationType::Extends),
-            "conflicts" => Ok(RelationType::Conflicts),
-            "requires" => Ok(RelationType::Requires),
-            _ => Err(Error::InvalidRelationType(s.to_string())),
         }
     }
 
@@ -116,7 +120,10 @@ impl GraphOperations {
         relation_type: RelationType,
         metadata: Option<String>,
     ) -> Result<()> {
-        debug!("Creating relation: {} -[{}]-> {}", from_id, relation_type, to_id);
+        debug!(
+            "Creating relation: {} -[{}]-> {}",
+            from_id, relation_type, to_id
+        );
 
         // Check for circular dependency
         if self.would_create_cycle(from_id, to_id).await? {
@@ -153,7 +160,10 @@ impl GraphOperations {
         to_id: &str,
         relation_type: RelationType,
     ) -> Result<()> {
-        debug!("Deleting relation: {} -[{}]-> {}", from_id, relation_type, to_id);
+        debug!(
+            "Deleting relation: {} -[{}]-> {}",
+            from_id, relation_type, to_id
+        );
 
         sqlx::query(
             r#"
@@ -409,7 +419,8 @@ mod tests {
             .unwrap();
 
         // Try to create cycle: 3 -> 1 (should fail)
-        let result = db.graph()
+        let result = db
+            .graph()
             .create_relation("exp-3", "exp-1", RelationType::Uses, None)
             .await;
 

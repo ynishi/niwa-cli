@@ -3,7 +3,7 @@
 //! This module contains Agent trait implementations using llm-toolkit's Agent derive macro.
 //! Agents are kept in a separate module to avoid conflicts with the Result<T> type alias.
 
-use llm_toolkit::{Agent, ToPrompt, type_marker};
+use llm_toolkit::{type_marker, Agent, ToPrompt};
 use serde::{Deserialize, Serialize};
 
 /// Structured response for Expertise generation from LLM
