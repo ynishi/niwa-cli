@@ -80,7 +80,15 @@ impl Database {
     async fn migrate(&self) -> Result<()> {
         info!("Running database migrations");
 
-        sqlx::migrate!("./migrations")
+        // Use runtime migration loading instead of compile-time macro
+        // This is essential for CLI/Desktop apps where migrations can be added
+        // after the binary is built
+        let migrations_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("migrations");
+
+        sqlx::migrate::Migrator::new(migrations_path)
+            .await
+            .map_err(|e| Error::Migration(e.to_string()))?
             .run(&self.pool)
             .await
             .map_err(|e| Error::Migration(e.to_string()))?;

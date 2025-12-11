@@ -203,6 +203,29 @@ CREATE TRIGGER expertises_au AFTER UPDATE ON expertises BEGIN
 END;
 ```
 
+#### 2.2.1 Migration Policy
+
+**原則: 破壊的変更を避ける**
+
+NIWA は CLI/Desktop App であり、ユーザーのローカルデータを保護することが最優先です。
+
+**許可される変更:**
+- ✅ テーブル追加
+- ✅ カラム追加（`ALTER TABLE ADD COLUMN`）
+- ✅ インデックス追加
+- ✅ トリガー追加
+
+**禁止される変更:**
+- ❌ カラム削除（代わりに deprecated として残す）
+- ❌ テーブル削除（代わりに使用を停止）
+- ❌ データ型の変更（互換性がない場合）
+- ❌ データ損失を伴う変更
+
+**Migration の実装:**
+- 実行時ロード: `sqlx::migrate::Migrator::new()` を使用（コンパイル時 `migrate!()` マクロは使わない）
+- 理由: CLI では migration ファイルの追加がバイナリリビルド後に行われることがあるため
+- 場所: `crates/niwa-core/migrations/*.sql`
+
 #### 2.3 Application State
 
 ```rust
