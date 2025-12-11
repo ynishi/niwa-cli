@@ -4,7 +4,7 @@ use crate::agents::{
     ExpertiseExtractorAgent, ExpertiseImproverAgent, ExpertiseMergerAgent,
     InteractiveExpertiseAgent,
 };
-use crate::{prompts, Result};
+use crate::Result;
 use llm_toolkit::agent::Agent as AgentTrait;
 use niwa_core::{Expertise, Scope};
 use tracing::{debug, info};
