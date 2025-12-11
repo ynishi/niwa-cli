@@ -3,7 +3,7 @@
 //! This module contains Agent trait implementations using llm-toolkit's Agent derive macro.
 //! Agents are kept in a separate module to avoid conflicts with the Result<T> type alias.
 
-use llm_toolkit::{type_marker, Agent, ToPrompt};
+use llm_toolkit::{ToPrompt, agent, type_marker};
 use serde::{Deserialize, Serialize};
 
 /// Structured response for Expertise generation from LLM
@@ -27,7 +27,6 @@ pub struct ExpertiseResponse {
 }
 
 /// Agent for extracting structured expertise from conversation logs
-#[derive(Agent)]
 #[agent(
     expertise = r#"You are an expert at analyzing conversation logs and extracting structured expertise.
 
@@ -40,8 +39,10 @@ Your task is to:
    - Concrete and actionable
    - Relevant to the expertise domain
 
-Focus on extracting reusable knowledge that would be valuable for future reference."#,
-    output = "ExpertiseResponse"
+Focus on extracting reusable knowledge that would be valuable for future reference.
+Output a single, valid JSON object with the structure defined by the `ExpertiseResponse` type. Do not include any other text or explanations outside of the JSON object."#,
+    output = "ExpertiseResponse",
+    backend = "claude"
 )]
 pub struct ExpertiseExtractorAgent;
 
@@ -79,7 +80,6 @@ pub struct ExpertiseImprovementResponse {
 }
 
 /// Agent for refining and improving existing Expertise
-#[derive(Agent)]
 #[agent(
     expertise = r#"You are an expert at refining and improving existing expertise.
 
@@ -134,7 +134,6 @@ pub struct InteractiveExpertiseResponse {
 }
 
 /// Agent for generating structured expertise from high-level requirements
-#[derive(Agent)]
 #[agent(
     expertise = r#"You are an expert at generating structured expertise from high-level requirements.
 
@@ -196,7 +195,6 @@ pub struct MergedExpertiseResponse {
 }
 
 /// Agent for synthesizing multiple knowledge sources into unified expertise
-#[derive(Agent)]
 #[agent(
     expertise = r#"You are an expert at synthesizing multiple knowledge sources into unified expertise.
 

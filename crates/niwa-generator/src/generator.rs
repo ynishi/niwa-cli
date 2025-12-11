@@ -5,9 +5,9 @@ use crate::agents::{
     InteractiveExpertiseAgent,
 };
 use crate::Result;
-use llm_toolkit::agent::Agent as AgentTrait;
+use llm_toolkit::Agent;
 use niwa_core::{Expertise, Scope};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 /// Generation options
 #[derive(Debug, Clone)]
@@ -104,7 +104,14 @@ impl ExpertiseGenerator {
         let prompt = format!(
             "Analyze the following conversation log and extract structured expertise.\n\n\
              Target Expertise ID: {}\n\n\
-             Log Content:\n{}",
+             =====================================================================\n
+             Log Content Start\n
+             =====================================================================\n
+             {}
+             =====================================================================\n
+             Log Content End\n
+             =====================================================================\n
+             ",
             id, log_content
         );
 
@@ -114,9 +121,9 @@ impl ExpertiseGenerator {
         // - Markdown code block stripping
         // - Type-safe deserialization
         // - Error handling with proper error messages
-        let agent = ExpertiseExtractorAgent;
+        let agent = ExpertiseExtractorAgent::default();
 
-        match AgentTrait::execute(&agent, prompt.into()).await {
+        match agent.execute(prompt.into()).await {
             Ok(response) => {
                 info!(
                     "Successfully extracted expertise: {} tags, {} fragments",
@@ -145,7 +152,7 @@ impl ExpertiseGenerator {
             }
             Err(e) => {
                 // Agent error - return error
-                debug!("LLM generation failed: {:?}", e);
+                error!("LLM generation failed: {:?}", e);
                 Err(e.into())
             }
         }
@@ -195,9 +202,9 @@ impl ExpertiseGenerator {
         );
 
         // Use the Agent macro-powered agent
-        let agent = ExpertiseImproverAgent;
+        let agent = ExpertiseImproverAgent::default();
 
-        match AgentTrait::execute(&agent, prompt.into()).await {
+        match agent.execute(prompt.into()).await {
             Ok(response) => {
                 info!(
                     "Successfully improved expertise: {} new fragments, {} to remove",
@@ -316,9 +323,9 @@ impl ExpertiseGenerator {
         }
 
         // Use the Agent macro-powered agent
-        let agent = InteractiveExpertiseAgent;
+        let agent = InteractiveExpertiseAgent::default();
 
-        match AgentTrait::execute(&agent, prompt.into()).await {
+        match agent.execute(prompt.into()).await {
             Ok(response) => {
                 info!(
                     "Successfully generated interactive expertise: {} tags, {} fragments",
@@ -400,9 +407,9 @@ impl ExpertiseGenerator {
         );
 
         // Use the Agent macro-powered agent
-        let agent = ExpertiseMergerAgent;
+        let agent = ExpertiseMergerAgent::default();
 
-        match AgentTrait::execute(&agent, prompt.into()).await {
+        match agent.execute(prompt.into()).await {
             Ok(response) => {
                 info!(
                     "Successfully merged expertises: {} tags, {} fragments",
