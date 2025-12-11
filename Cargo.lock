@@ -1751,9 +1751,9 @@ dependencies = [
 
 [[package]]
 name = "sen"
-version = "0.5.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f982322ffa83de41c60679a689a5d3c181fec2a4d1b20e4c24b1cd6cf7f2c5"
+checksum = "c1f9214a9a43a99712afd2113327e0e08402acfea375993be0d587bf85a4f666"
 dependencies = [
  "built",
  "chrono",
@@ -1769,9 +1769,9 @@ dependencies = [
 
 [[package]]
 name = "sen-rs-macros"
-version = "0.5.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "426b24e20b0462f9ec42715bb6f99dcec9766e0f75fe73036b710c872ceb2636"
+checksum = "621ea4ce48ae9730f63a902c130f21964d350070466a88e3eeb037dda3daeb58"
 dependencies = [
  "proc-macro2",
  "quote",
