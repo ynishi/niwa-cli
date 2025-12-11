@@ -206,10 +206,7 @@ pub async fn deps(state: State<AppState>, Args(args): Args<DepsArgs>) -> CliResu
             ("←", relation.from_id.as_str())
         };
 
-        let metadata = relation
-            .metadata
-            .as_deref()
-            .unwrap_or("-");
+        let metadata = relation.metadata.as_deref().unwrap_or("-");
 
         table.add_row(vec![
             Cell::new(direction),
