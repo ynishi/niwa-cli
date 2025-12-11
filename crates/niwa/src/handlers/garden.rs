@@ -26,6 +26,14 @@ pub struct GardenArgs {
     /// Dry run - show what would be processed without actually processing
     #[arg(short = 'n', long)]
     pub dry_run: bool,
+
+    /// Maximum number of files to process
+    #[arg(short, long)]
+    pub limit: Option<usize>,
+
+    /// Only process files modified in the last N days
+    #[arg(long)]
+    pub recent_days: Option<u64>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -125,10 +133,10 @@ pub async fn garden(state: State<AppState>, Args(args): Args<GardenArgs>) -> Cli
             // Scan mode
             if let Some(directory) = args.directory {
                 // Explicit directory specified
-                handle_scan(&app, &directory, args.scope, args.dry_run).await
+                handle_scan(&app, &directory, args.scope, args.dry_run, args.limit, args.recent_days).await
             } else {
                 // Scan all registered paths
-                handle_scan_registered(&app, args.scope, args.dry_run).await
+                handle_scan_registered(&app, args.scope, args.dry_run, args.limit, args.recent_days).await
             }
         }
     }
@@ -263,7 +271,7 @@ async fn handle_remove(app: &AppState, id: i64) -> CliResult<String> {
     }
 }
 
-async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool) -> CliResult<String> {
+async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool, limit: Option<usize>, recent_days: Option<u64>) -> CliResult<String> {
     // Get all enabled paths
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
@@ -290,7 +298,7 @@ async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool) -> 
             continue;
         }
 
-        match handle_scan(app, &path, scope, dry_run).await {
+        match handle_scan(app, &path, scope, dry_run, limit, recent_days).await {
             Ok(result) => {
                 all_results.push(format!("\n{}: {}\n{}", path.display(), "✓", result));
             }
@@ -311,7 +319,7 @@ async fn handle_scan_registered(app: &AppState, scope: Scope, dry_run: bool) -> 
     Ok(output)
 }
 
-async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bool) -> CliResult<String> {
+async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bool, limit: Option<usize>, recent_days: Option<u64>) -> CliResult<String> {
     // Verify directory exists
     if !directory.exists() {
         return Err(CliError::user(format!(
@@ -337,9 +345,28 @@ async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bo
         return Ok("No session files found.".to_string());
     }
 
+    // Filter by recent_days if specified
+    let filtered_files = if let Some(days) = recent_days {
+        let cutoff_time = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(days * 24 * 60 * 60);
+
+        session_files.into_iter().filter(|path| {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                if let Ok(modified) = metadata.modified() {
+                    return modified >= cutoff_time;
+                }
+            }
+            false
+        }).collect()
+    } else {
+        session_files
+    };
+
+    info!("After recent_days filter: {} files", filtered_files.len());
+
     // Filter out already processed files
     let mut unprocessed_files = Vec::new();
-    for file_path in session_files {
+    for file_path in filtered_files {
         let hash = calculate_file_hash(&file_path)?;
         let is_processed = is_file_processed(&app.db.pool(), &file_path, &hash).await?;
 
@@ -348,8 +375,13 @@ async fn handle_scan(app: &AppState, directory: &Path, scope: Scope, dry_run: bo
         }
     }
 
+    // Apply limit if specified
+    if let Some(max_count) = limit {
+        unprocessed_files.truncate(max_count);
+    }
+
     info!(
-        "Found {} unprocessed files",
+        "Found {} unprocessed files (after filters)",
         unprocessed_files.len()
     );
 
