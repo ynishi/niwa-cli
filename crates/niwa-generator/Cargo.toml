@@ -1,0 +1,39 @@
+[package]
+name = "niwa-generator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LLM-powered Expertise generation for NIWA"
+
+[dependencies]
+# Internal
+niwa-core = { workspace = true }
+
+# LLM
+llm-toolkit = { workspace = true }
+llm-toolkit-expertise = "0.2.1"
+
+# Async
+tokio = { workspace = true }
+async-trait = "0.1"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.13"
