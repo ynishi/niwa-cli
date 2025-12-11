@@ -53,32 +53,72 @@ NIWA は **「知能資産の永続化と成長」** を実現します。
 
 ## ✨ Features
 
-### Current (Phase 1: Core + SQLite)
+### Core Features
 
 - ✅ **SQLite-based storage** with FTS5 full-text search
 - ✅ **Expertise CRUD** operations with versioning
 - ✅ **Dependency graph** (Relations: uses, extends, conflicts, requires)
 - ✅ **Scope-based organization** (personal, company, project)
-- ✅ **Tag-based filtering**
+- ✅ **Tag-based filtering** and search
 - ✅ **Type-safe API** with comprehensive error handling
 
-### Planned
+### LLM-Powered Features
 
-- 🚧 **LLM-powered generation** from conversation logs (Phase 2)
-- 🚧 **MCP Server** for Claude Code integration (Phase 3)
-- 🚧 **Exporters** (Gemini CLI, Cursor) (Phase 4)
-- 🚧 **Gardener** - Auto-learning from `.claude` sessions (Phase 5)
+- ✅ **Auto-generation** from files or text input (`niwa gen`)
+- ✅ **Expertise improvement** with LLM assistance (`niwa improve`)
+- ✅ **Session log learning** - Auto-extract from Claude Code sessions (`niwa garden`)
+- ✅ **Smart deduplication** via SHA256 file hashing
+
+### CLI Experience
+
+- ✅ **Interactive tutorial** (`niwa tutorial`)
+- ✅ **Rich formatting** with tables and colored output
+- ✅ **Graph visualization** (`niwa graph`)
+- ✅ **Flexible filters** (--limit, --recent-days for garden)
+
+### Future Plans
+
+- 📋 **MCP Server** for direct Claude integration
+- 📋 **Exporters** (Gemini CLI, Cursor rules)
+- 💡 **Currently:** Use NIWA CLI directly - no export needed!
 
 ---
 
 ## 🚀 Quick Start
 
+### Prerequisites
+
+NIWA uses Claude Code CLI internally for LLM-powered features. Make sure you have:
+
+- **Rust 1.70+** and **SQLite 3.35+**
+- **Claude Code CLI** installed ([Installation Guide](https://docs.anthropic.com/en/docs/claude-code))
+- **ANTHROPIC_API_KEY** environment variable set
+
+```bash
+# Set your API key (required for gen, improve, garden commands)
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Note:** NIWA internally uses `llm-toolkit`, which calls the `claude` command. Your environment variables (including `ANTHROPIC_API_KEY`) are passed through to Claude Code.
+
 ### Installation
+
+#### From crates.io (Recommended)
+
+```bash
+cargo install niwa
+```
+
+#### From source
 
 ```bash
 git clone https://github.com/ynishi/niwa-cli.git
 cd niwa-cli
+make install
+
+# Or manually:
 cargo build --release
+cargo install --path crates/niwa
 ```
 
 ### Library Usage (niwa-core)
@@ -373,26 +413,28 @@ let graph = db.graph().build_graph().await?;
 - [x] Graph operations (relations)
 - [x] Comprehensive tests
 
-### 🚧 Phase 2: LLM Generation (In Progress)
-- [ ] ExpertiseGenerator implementation
-- [ ] `niwa gen` command
-- [ ] `niwa improve` command
-- [ ] Interactive generation
+### ✅ Phase 2: LLM Generation (Complete)
+- [x] ExpertiseGenerator implementation
+- [x] `niwa gen` command (--file, --text)
+- [x] `niwa improve` command
+- [x] LLM-powered extraction
 
-### 📋 Phase 3: MCP Server
+### ✅ Phase 5: Gardener (Complete)
+- [x] Session log parser
+- [x] `niwa garden` command
+- [x] claude-code / cursor presets
+- [x] Auto-learning from session logs
+- [x] Deduplication via file hashing
+
+### 📋 Phase 3: MCP Server (Future)
 - [ ] MCP protocol implementation
-- [ ] Claude Code integration
 - [ ] Prompts / Resources / Tools
+- [ ] Direct MCP integration
 
-### 📋 Phase 4: Exporters
+### 📋 Phase 4: Exporters (Future)
 - [ ] Gemini CLI config generator
 - [ ] Cursor rules generator
-
-### 📋 Phase 5: Gardener (Auto-learning)
-- [ ] Session log parser
-- [ ] `.claude` directory crawler
-- [ ] Pattern extraction
-- [ ] Auto-growth logic
+- [ ] **Note:** Currently use NIWA CLI directly instead of export
 
 ---
 

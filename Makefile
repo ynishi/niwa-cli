@@ -132,3 +132,89 @@ version: ## Display version information
 	@echo ""
 	@echo "Cargo version:"
 	@cargo --version
+
+.PHONY: release-patch
+release-patch: preflight
+	@echo "🚀 Releasing PATCH version with cargo-release..."
+	@echo ""
+	@echo "This will:"
+	@echo "  - Update version numbers (0.x.y -> 0.x.y+1)"
+	@echo "  - Create git commit and tag"
+	@echo "  - (Publish step is manual, see make publish)"
+	@echo ""
+	@if [ "$$RELEASE_CONFIRM" != "yes" ]; then \
+		read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1; \
+	fi
+	cargo release patch --execute --no-confirm --no-publish
+
+.PHONY: release-minor
+release-minor: preflight
+	@echo "🚀 Releasing MINOR version with cargo-release..."
+	@echo ""
+	@echo "This will:"
+	@echo "  - Update version numbers (0.x.y -> 0.x+1.0)"
+	@echo "  - Create git commit and tag"
+	@echo "  - (Publish step is manual, see make publish)"
+	@echo ""
+	@if [ "$$RELEASE_CONFIRM" != "yes" ]; then \
+		read -p "Continue? [y/N] " confirm && [ "$$confirm" = "y" ] || exit 1; \
+	fi
+	cargo release minor --execute --no-confirm --no-publish
+
+.PHONY: release
+release: release-patch
+
+
+.PHONY: publish
+publish: preflight ## Publish all crates to crates.io
+	@echo ""
+	@echo "🚀 Starting sequential publish process..."
+	@echo ""
+
+	@echo "--- Step 1: Publishing niwa-core ---"
+	@echo "  Running dry-run for niwa-core..."
+	cargo publish -p niwa-core --dry-run --allow-dirty
+
+	@echo "  ✓ Dry-run successful for niwa-core"
+	@echo "  Publishing niwa-core to crates.io..."
+	cargo publish -p niwa-core --allow-dirty
+
+	@echo ""
+	@echo "✅ niwa-core published successfully!"
+	@echo ""
+	@echo "⏳ Waiting 30 seconds for crates.io index to update..."
+	sleep 30
+
+	@echo ""
+	@echo "--- Step 2: Publishing niwa-generator ---"
+	@echo "  Running dry-run for niwa-generator..."
+	cargo publish -p niwa-generator --dry-run --allow-dirty
+
+	@echo "  ✓ Dry-run successful for niwa-generator"
+	@echo "  Publishing niwa-generator to crates.io..."
+	cargo publish -p niwa-generator --allow-dirty
+
+	@echo ""
+	@echo "✅ niwa-generator published successfully!"
+	@echo ""
+	@echo "⏳ Waiting 30 seconds for crates.io index to update..."
+	sleep 30
+
+	@echo ""
+	@echo "--- Step 3: Publishing niwa (CLI) ---"
+	@echo "  Running dry-run for niwa..."
+	cargo publish -p niwa --dry-run --allow-dirty
+
+	@echo "  ✓ Dry-run successful for niwa"
+	@echo "  Publishing niwa to crates.io..."
+	cargo publish -p niwa --allow-dirty
+
+	@echo ""
+	@echo "✅ niwa published successfully!"
+	@echo ""
+	@echo "🎉 All NIWA crates have been successfully published to crates.io!"
+	@echo ""
+	@echo "📦 Published crates:"
+	@echo "  - niwa-core"
+	@echo "  - niwa-generator"
+	@echo "  - niwa (CLI)"
