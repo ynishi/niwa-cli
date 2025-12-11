@@ -1,43 +1,44 @@
 //! Show command
 
 use crate::state::AppState;
+use clap::Parser;
 use niwa_core::{Scope, StorageOperations};
-use sen::{CliError, CliResult, State};
-use std::str::FromStr;
+use sen::{Args, CliResult, State};
 
 /// Show detailed information about an Expertise
 ///
 /// Usage:
 ///   niwa show rust-expert
 ///   niwa show rust-expert --scope company
-pub async fn show(state: State<AppState>) -> CliResult<String> {
-    let args: Vec<String> = std::env::args().collect();
+#[derive(Parser, Debug)]
+pub struct ShowArgs {
+    /// Expertise ID to display
+    pub id: String,
 
-    // Get ID (first non-flag argument after "show")
-    let id = args
-        .iter()
-        .skip_while(|s| s.as_str() != "show")
-        .skip(1)
-        .find(|s| !s.starts_with('-'))
-        .ok_or_else(|| CliError::user("Missing expertise ID"))?;
+    /// Scope (personal, team, company)
+    #[arg(short, long, default_value = "personal")]
+    pub scope: Scope,
+}
 
-    // Get scope
-    let scope = args
-        .iter()
-        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s")
-        .nth(1)
-        .and_then(|s| Scope::from_str(s).ok())
-        .unwrap_or(Scope::Personal);
-
+#[sen::handler]
+pub async fn show(
+    state: State<AppState>,
+    Args(args): Args<ShowArgs>,
+) -> CliResult<String> {
     let app = state.read().await;
 
     let expertise = app
         .db
         .storage()
-        .get(id, scope)
+        .get(&args.id, args.scope)
         .await
-        .map_err(|e| CliError::system(format!("Database error: {}", e)))?
-        .ok_or_else(|| CliError::user(format!("Expertise not found: {} (scope: {})", id, scope)))?;
+        .map_err(|e| sen::CliError::system(format!("Database error: {}", e)))?
+        .ok_or_else(|| {
+            sen::CliError::user(format!(
+                "Expertise not found: {} (scope: {})",
+                args.id, args.scope
+            ))
+        })?;
 
     // Format output
     let mut output = String::new();

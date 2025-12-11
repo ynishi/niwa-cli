@@ -34,7 +34,6 @@
 pub mod agents;
 pub mod error;
 pub mod generator;
-pub mod prompts;
 pub mod session_log;
 
 // Re-exports

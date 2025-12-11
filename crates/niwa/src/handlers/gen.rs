@@ -1,31 +1,44 @@
 //! Generation commands
 
 use crate::state::AppState;
+use clap::Parser;
 use niwa_core::{Scope, StorageOperations};
-use sen::{CliError, CliResult, State};
+use sen::{Args, CliError, CliResult, State};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// Generate Expertise from log file
 ///
 /// Usage:
 ///   niwa gen --file session.log --id rust-expert --scope personal
-pub async fn generate(state: State<AppState>) -> CliResult<String> {
-    // Parse arguments (simplified for now)
-    let args: Vec<String> = std::env::args().collect();
+#[derive(Parser, Debug)]
+pub struct GenArgs {
+    /// Log file path to generate expertise from
+    #[arg(short = 'f', long)]
+    pub file: PathBuf,
 
-    // Extract parameters from args
-    let (file_path, id, scope) = parse_gen_args(&args)?;
+    /// Expertise ID
+    #[arg(long)]
+    pub id: String,
 
+    /// Scope (personal, team, company)
+    #[arg(short, long, default_value = "personal")]
+    pub scope: Scope,
+}
+
+#[sen::handler]
+pub async fn generate(
+    state: State<AppState>,
+    Args(args): Args<GenArgs>,
+) -> CliResult<String> {
     // Read log file
-    let log_content = std::fs::read_to_string(&file_path)
+    let log_content = std::fs::read_to_string(&args.file)
         .map_err(|e| CliError::user(format!("Failed to read log file: {}", e)))?;
 
     // Generate expertise
     let app = state.read().await;
     let expertise = app
         .generator
-        .generate_from_log(&log_content, &id, scope)
+        .generate_from_log(&log_content, &args.id, args.scope)
         .await
         .map_err(|e| CliError::system(format!("Failed to generate expertise: {}", e)))?;
 
@@ -40,7 +53,7 @@ pub async fn generate(state: State<AppState>) -> CliResult<String> {
         "✓ Generated expertise: {} v{}\n  Scope: {}\n  Description: {}",
         expertise.id(),
         expertise.version(),
-        scope,
+        args.scope,
         expertise.description()
     ))
 }
@@ -49,26 +62,45 @@ pub async fn generate(state: State<AppState>) -> CliResult<String> {
 ///
 /// Usage:
 ///   niwa improve rust-expert --instruction "Add error handling examples" --scope personal
-pub async fn improve(state: State<AppState>) -> CliResult<String> {
-    let args: Vec<String> = std::env::args().collect();
+#[derive(Parser, Debug)]
+pub struct ImproveArgs {
+    /// Expertise ID to improve
+    pub id: String,
 
-    let (id, instruction, scope) = parse_improve_args(&args)?;
+    /// Improvement instruction
+    #[arg(short, long)]
+    pub instruction: String,
 
+    /// Scope (personal, team, company)
+    #[arg(short, long, default_value = "personal")]
+    pub scope: Scope,
+}
+
+#[sen::handler]
+pub async fn improve(
+    state: State<AppState>,
+    Args(args): Args<ImproveArgs>,
+) -> CliResult<String> {
     let app = state.read().await;
 
     // Get existing expertise
     let expertise = app
         .db
         .storage()
-        .get(&id, scope)
+        .get(&args.id, args.scope)
         .await
         .map_err(|e| CliError::system(format!("Database error: {}", e)))?
-        .ok_or_else(|| CliError::user(format!("Expertise not found: {} (scope: {})", id, scope)))?;
+        .ok_or_else(|| {
+            CliError::user(format!(
+                "Expertise not found: {} (scope: {})",
+                args.id, args.scope
+            ))
+        })?;
 
     // Improve it
     let improved = app
         .generator
-        .improve(expertise, &instruction)
+        .improve(expertise, &args.instruction)
         .await
         .map_err(|e| CliError::system(format!("Failed to improve expertise: {}", e)))?;
 
@@ -84,83 +116,4 @@ pub async fn improve(state: State<AppState>) -> CliResult<String> {
         improved.id(),
         improved.version()
     ))
-}
-
-// Helper functions
-
-fn parse_gen_args(args: &[String]) -> Result<(PathBuf, String, Scope), CliError> {
-    let mut file: Option<PathBuf> = None;
-    let mut id: Option<String> = None;
-    let mut scope = Scope::Personal;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--file" | "-f" => {
-                if i + 1 < args.len() {
-                    file = Some(PathBuf::from(&args[i + 1]));
-                    i += 1;
-                }
-            }
-            "--id" => {
-                if i + 1 < args.len() {
-                    id = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            }
-            "--scope" | "-s" => {
-                if i + 1 < args.len() {
-                    scope = Scope::from_str(&args[i + 1])
-                        .map_err(|_| CliError::user(format!("Invalid scope: {}", args[i + 1])))?;
-                    i += 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    let file = file.ok_or_else(|| CliError::user("Missing required argument: --file"))?;
-    let id = id.ok_or_else(|| CliError::user("Missing required argument: --id"))?;
-
-    Ok((file, id, scope))
-}
-
-fn parse_improve_args(args: &[String]) -> Result<(String, String, Scope), CliError> {
-    // Find the ID (first non-flag argument after "improve")
-    let id = args
-        .iter()
-        .skip_while(|s| s.as_str() != "improve")
-        .skip(1)
-        .find(|s| !s.starts_with('-'))
-        .ok_or_else(|| CliError::user("Missing expertise ID"))?
-        .clone();
-
-    // Find instruction
-    let instruction = args
-        .iter()
-        .skip_while(|s| s.as_str() != "--instruction" && s.as_str() != "-i")
-        .nth(1)
-        .ok_or_else(|| CliError::user("Missing required argument: --instruction"))?
-        .clone();
-
-    // Find scope (optional, defaults to Personal)
-    let scope = args
-        .iter()
-        .position(|s| s.as_str() == "--scope" || s.as_str() == "-s")
-        .and_then(|pos| args.get(pos + 1))
-        .map(|s| Scope::from_str(s))
-        .transpose()
-        .map_err(|_| {
-            CliError::user(format!(
-                "Invalid scope: {}",
-                args.iter()
-                    .position(|s| s.as_str() == "--scope" || s.as_str() == "-s")
-                    .and_then(|pos| args.get(pos + 1))
-                    .unwrap()
-            ))
-        })?
-        .unwrap_or(Scope::Personal);
-
-    Ok((id, instruction, scope))
 }

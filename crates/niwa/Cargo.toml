@@ -17,7 +17,7 @@ niwa-core = { workspace = true }
 niwa-generator = { workspace = true }
 
 # CLI Framework
-sen = { version = "0.5.0", features = ["sensors"] }
+sen = { version = "0.5.0", features = ["sensors", "clap"] }
 
 # LLM
 llm-toolkit = { workspace = true, features = ["agent"] }

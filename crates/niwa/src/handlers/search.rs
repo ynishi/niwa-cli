@@ -1,35 +1,33 @@
 //! Search command
 
 use crate::state::AppState;
+use clap::Parser;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
 use niwa_core::SearchOptions;
-use sen::{CliError, CliResult, State};
+use sen::{Args, CliResult, State};
 
 /// Search expertises
 ///
 /// Usage:
 ///   niwa search "rust error handling"
 ///   niwa search "async" --limit 10
-pub async fn search(state: State<AppState>) -> CliResult<String> {
-    let args: Vec<String> = std::env::args().collect();
+#[derive(Parser, Debug)]
+pub struct SearchArgs {
+    /// Search query
+    pub query: String,
 
-    // Get query (first non-flag argument after "search")
-    let query = args
-        .iter()
-        .skip_while(|s| s.as_str() != "search")
-        .skip(1)
-        .find(|s| !s.starts_with('-'))
-        .ok_or_else(|| CliError::user("Missing search query"))?;
+    /// Maximum number of results
+    #[arg(short, long)]
+    pub limit: Option<usize>,
+}
 
-    // Parse limit
-    let limit = args
-        .iter()
-        .skip_while(|s| s.as_str() != "--limit" && s.as_str() != "-l")
-        .nth(1)
-        .and_then(|s| s.parse::<usize>().ok());
-
+#[sen::handler]
+pub async fn search(
+    state: State<AppState>,
+    Args(args): Args<SearchArgs>,
+) -> CliResult<String> {
     let mut options = SearchOptions::new();
-    if let Some(limit) = limit {
+    if let Some(limit) = args.limit {
         options = options.limit(limit);
     }
 
@@ -38,12 +36,12 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
     let results = app
         .db
         .query()
-        .search(query, options)
+        .search(&args.query, options)
         .await
-        .map_err(|e| CliError::system(format!("Search failed: {}", e)))?;
+        .map_err(|e| sen::CliError::system(format!("Search failed: {}", e)))?;
 
     if results.is_empty() {
-        return Ok(format!("No results found for: {}", query));
+        return Ok(format!("No results found for: {}", args.query));
     }
 
     // Build table
@@ -72,7 +70,7 @@ pub async fn search(state: State<AppState>) -> CliResult<String> {
 
     Ok(format!(
         "\nSearch: \"{}\"\n\n{}\n\nFound: {} results",
-        query,
+        args.query,
         table,
         results.len()
     ))

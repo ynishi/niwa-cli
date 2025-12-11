@@ -1,23 +1,31 @@
 //! List commands
 
 use crate::state::AppState;
+use clap::Parser;
 use comfy_table::{presets::UTF8_FULL, Cell, Color, ContentArrangement, Table};
 use niwa_core::{Scope, StorageOperations};
-use sen::{CliError, CliResult, State};
-use std::str::FromStr;
+use sen::{Args, CliError, CliResult, State};
 
 /// List all expertises
 ///
 /// Usage:
 ///   niwa list
 ///   niwa list --scope personal
-pub async fn list(state: State<AppState>) -> CliResult<String> {
-    let args: Vec<String> = std::env::args().collect();
-    let scope = parse_scope_arg(&args);
+#[derive(Parser, Debug)]
+pub struct ListArgs {
+    /// Filter by scope (personal, team, company)
+    #[arg(short, long)]
+    pub scope: Option<Scope>,
+}
 
+#[sen::handler]
+pub async fn list(
+    state: State<AppState>,
+    Args(args): Args<ListArgs>,
+) -> CliResult<String> {
     let app = state.read().await;
 
-    let expertises = if let Some(scope) = scope {
+    let expertises = if let Some(scope) = args.scope {
         app.db.storage().list(scope).await
     } else {
         app.db.storage().list_all().await
@@ -99,13 +107,4 @@ pub async fn tags(state: State<AppState>) -> CliResult<String> {
     }
 
     Ok(format!("\n{}", table))
-}
-
-// Helper functions
-
-fn parse_scope_arg(args: &[String]) -> Option<Scope> {
-    args.iter()
-        .skip_while(|s| s.as_str() != "--scope" && s.as_str() != "-s")
-        .nth(1)
-        .and_then(|s| Scope::from_str(s).ok())
 }

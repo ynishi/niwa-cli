@@ -1705,6 +1705,7 @@ checksum = "b1f982322ffa83de41c60679a689a5d3c181fec2a4d1b20e4c24b1cd6cf7f2c5"
 dependencies = [
  "built",
  "chrono",
+ "clap",
  "sen-rs-macros",
  "serde",
  "serde_json",
