@@ -67,14 +67,14 @@ Visualize graph:
   🌱 Use Case 4: Auto-learn from Session Logs
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Initialize garden monitoring (one-time):
-  $ niwa garden init claude-code
+Initialize crawler monitoring (one-time):
+  $ niwa crawler init claude-code
 
 Process recent sessions:
-  $ niwa garden --recent-days 5 --limit 10
+  $ niwa crawler run --recent-days 5 --limit 10
 
 Dry run to see what will be processed:
-  $ niwa garden --recent-days 5 --limit 10 --dry-run
+  $ niwa crawler run --recent-days 5 --limit 10 --dry-run
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   💼 Real-World Example: PR Review Workflow
@@ -128,8 +128,8 @@ Try these commands now:
    $ niwa list
 
 3. Setup auto-learning:
-   $ niwa garden init claude-code
-   $ niwa garden --recent-days 1 --limit 3 --dry-run
+   $ niwa crawler init claude-code
+   $ niwa crawler run --recent-days 1 --limit 3 --dry-run
 
 For more details, see: README.md and ARCHITECTURE.md
 

@@ -1,4 +1,4 @@
-//! Gardener commands - automatic expertise extraction from session logs
+//! Crawler commands - automatic expertise extraction from session logs
 
 use crate::state::AppState;
 use clap::{Parser, Subcommand};
@@ -11,43 +11,45 @@ use tracing::{debug, info, warn};
 
 /// Automatically extract expertise from session logs
 #[derive(Parser, Debug)]
-pub struct GardenArgs {
+pub struct CrawlerArgs {
     #[command(subcommand)]
-    pub command: Option<GardenCommand>,
-
-    /// Directory to scan (if no subcommand specified)
-    #[arg(value_name = "DIRECTORY")]
-    pub directory: Option<PathBuf>,
-
-    /// Scope for generated expertises (default: personal)
-    #[arg(short, long, default_value = "personal")]
-    pub scope: Scope,
-
-    /// Dry run - show what would be processed without actually processing
-    #[arg(short = 'n', long)]
-    pub dry_run: bool,
-
-    /// Maximum number of files to process
-    #[arg(short, long)]
-    pub limit: Option<usize>,
-
-    /// Only process files modified in the last N days
-    #[arg(long)]
-    pub recent_days: Option<u64>,
-
-    /// Automatically link new expertises to existing ones based on shared tags
-    #[arg(long)]
-    pub auto_link: bool,
-
-    /// Automatically detect scope from file path using scope mappings
-    /// (overrides --scope when a matching pattern is found)
-    #[arg(long)]
-    pub auto_scope: bool,
+    pub command: Option<CrawlerCommand>,
 }
 
 #[derive(Subcommand, Debug)]
-pub enum GardenCommand {
-    /// Initialize garden with preset paths (claude-code, cursor)
+pub enum CrawlerCommand {
+    /// Scan and extract expertise from session logs
+    Run {
+        /// Directory to scan
+        #[arg(value_name = "DIRECTORY")]
+        directory: Option<PathBuf>,
+
+        /// Scope for generated expertises (default: personal)
+        #[arg(short, long, default_value = "personal")]
+        scope: Scope,
+
+        /// Dry run - show what would be processed without actually processing
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+
+        /// Maximum number of files to process
+        #[arg(short, long)]
+        limit: Option<usize>,
+
+        /// Only process files modified in the last N days
+        #[arg(long)]
+        recent_days: Option<u64>,
+
+        /// Automatically link new expertises to existing ones based on shared tags
+        #[arg(long)]
+        auto_link: bool,
+
+        /// Automatically detect scope from file path using scope mappings
+        /// (overrides --scope when a matching pattern is found)
+        #[arg(long)]
+        auto_scope: bool,
+    },
+    /// Initialize crawler with preset paths (claude-code, cursor)
     Init {
         /// Preset name
         preset: String,
@@ -97,12 +99,12 @@ pub enum ScopeCommand {
 }
 
 #[derive(Debug)]
-pub enum GardenPreset {
+pub enum CrawlerPreset {
     ClaudeCode,
     Cursor,
 }
 
-impl GardenPreset {
+impl CrawlerPreset {
     fn from_str(s: &str) -> Result<Self, String> {
         match s.to_lowercase().as_str() {
             "claude-code" | "claude" => Ok(Self::ClaudeCode),
@@ -149,49 +151,55 @@ impl GardenPreset {
 }
 
 #[sen::handler]
-pub async fn garden(state: State<AppState>, Args(args): Args<GardenArgs>) -> CliResult<String> {
+pub async fn crawler(
+    state: State<AppState>,
+    Args(args): Args<CrawlerArgs>,
+) -> CliResult<String> {
     let app = state.read().await;
 
     match args.command {
-        Some(GardenCommand::Init { preset }) => handle_init(&app, &preset).await,
-        Some(GardenCommand::Add { path, name }) => handle_add(&app, &path, name.as_deref()).await,
-        Some(GardenCommand::List) => handle_list(&app).await,
-        Some(GardenCommand::Remove { id }) => handle_remove(&app, id).await,
-        Some(GardenCommand::Scope { command }) => handle_scope(&app, command).await,
-        None => {
+        Some(CrawlerCommand::Run {
+            directory,
+            scope,
+            dry_run,
+            limit,
+            recent_days,
+            auto_link,
+            auto_scope,
+        }) => {
             // Scan mode
-            if let Some(directory) = args.directory {
+            if let Some(dir) = directory {
                 // Explicit directory specified
                 handle_scan(
-                    &app,
-                    &directory,
-                    args.scope,
-                    args.dry_run,
-                    args.limit,
-                    args.recent_days,
-                    args.auto_link,
-                    args.auto_scope,
+                    &app, &dir, scope, dry_run, limit, recent_days, auto_link, auto_scope,
                 )
                 .await
             } else {
                 // Scan all registered paths
                 handle_scan_registered(
-                    &app,
-                    args.scope,
-                    args.dry_run,
-                    args.limit,
-                    args.recent_days,
-                    args.auto_link,
-                    args.auto_scope,
+                    &app, scope, dry_run, limit, recent_days, auto_link, auto_scope,
                 )
                 .await
             }
+        }
+        Some(CrawlerCommand::Init { preset }) => handle_init(&app, &preset).await,
+        Some(CrawlerCommand::Add { path, name }) => {
+            handle_add(&app, &path, name.as_deref()).await
+        }
+        Some(CrawlerCommand::List) => handle_list(&app).await,
+        Some(CrawlerCommand::Remove { id }) => handle_remove(&app, id).await,
+        Some(CrawlerCommand::Scope { command }) => handle_scope(&app, command).await,
+        None => {
+            // Show help when no subcommand is provided
+            Err(CliError::user(
+                "No subcommand specified. Use 'crawler --help' to see available commands.",
+            ))
         }
     }
 }
 
 async fn handle_init(app: &AppState, preset_name: &str) -> CliResult<String> {
-    let preset = GardenPreset::from_str(preset_name)
+    let preset = CrawlerPreset::from_str(preset_name)
         .map_err(|e| CliError::user(format!("{}\n\nAvailable presets: claude-code, cursor", e)))?;
 
     let path = preset.get_path().map_err(CliError::system)?;
@@ -224,7 +232,7 @@ async fn handle_init(app: &AppState, preset_name: &str) -> CliResult<String> {
     .map_err(|e| CliError::system(format!("Database error: {}", e)))?;
 
     Ok(format!(
-        "✓ Initialized {} garden monitoring\n  Path: {}",
+        "✓ Initialized {} crawler monitoring\n  Path: {}",
         preset.name(),
         path.display()
     ))
@@ -280,7 +288,7 @@ async fn handle_list(app: &AppState) -> CliResult<String> {
     .map_err(|e| CliError::system(format!("Database error: {}", e)))?;
 
     if rows.is_empty() {
-        return Ok("No monitoring paths registered.\n\nUse 'niwa garden init <preset>' or 'niwa garden add <path>' to register paths.".to_string());
+        return Ok("No monitoring paths registered.\n\nUse 'niwa crawler init <preset>' or 'niwa crawler add <path>' to register paths.".to_string());
     }
 
     let mut table = Table::new();
@@ -343,7 +351,7 @@ async fn handle_scan_registered(
     .map_err(|e| CliError::system(format!("Database error: {}", e)))?;
 
     if rows.is_empty() {
-        return Ok("No monitoring paths registered.\n\nUse 'niwa garden init <preset>' or 'niwa garden add <path>' to register paths.".to_string());
+        return Ok("No monitoring paths registered.\n\nUse 'niwa crawler init <preset>' or 'niwa crawler add <path>' to register paths.".to_string());
     }
 
     let mut all_results = Vec::new();
@@ -889,7 +897,7 @@ async fn handle_scope_list(app: &AppState) -> CliResult<String> {
     .map_err(|e| CliError::system(format!("Failed to list scope mappings: {}", e)))?;
 
     if rows.is_empty() {
-        return Ok("No scope mappings configured.\n\nUse 'niwa garden scope add <pattern> --scope <scope>' to add mappings.".to_string());
+        return Ok("No scope mappings configured.\n\nUse 'niwa crawler scope add <pattern> --scope <scope>' to add mappings.".to_string());
     }
 
     let mut table = Table::new();

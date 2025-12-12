@@ -5,7 +5,7 @@
 mod handlers;
 mod state;
 
-use handlers::{garden, gen, graph, list, relations, search, show, tutorial};
+use handlers::{crawler, gen, graph, list, relations, search, show, tutorial};
 use sen::Router;
 use state::AppState;
 
@@ -35,7 +35,7 @@ async fn main() {
         // Generation commands
         .route("gen", gen::generate())
         .route("improve", gen::improve())
-        .route("garden", garden::garden())
+        .route("crawler", crawler::crawler())
         // Query commands
         .route("list", list::list())
         .route("show", show::show())

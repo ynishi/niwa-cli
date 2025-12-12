@@ -66,7 +66,7 @@ NIWA は **「知能資産の永続化と成長」** を実現します。
 
 - ✅ **Auto-generation** from files or text input (`niwa gen`)
 - ✅ **Expertise improvement** with LLM assistance (`niwa improve`)
-- ✅ **Session log learning** - Auto-extract from Claude Code sessions (`niwa garden`)
+- ✅ **Session log learning** - Auto-extract from Claude Code sessions (`niwa crawler`)
 - ✅ **Smart deduplication** via SHA256 file hashing
 
 ### CLI Experience
@@ -74,7 +74,7 @@ NIWA は **「知能資産の永続化と成長」** を実現します。
 - ✅ **Interactive tutorial** (`niwa tutorial`)
 - ✅ **Rich formatting** with tables and colored output
 - ✅ **Graph visualization** (`niwa graph`)
-- ✅ **Flexible filters** (--limit, --recent-days for garden)
+- ✅ **Flexible filters** (--limit, --recent-days for crawler)
 
 ### Future Plans
 
@@ -95,7 +95,7 @@ NIWA uses Claude Code CLI internally for LLM-powered features. Make sure you hav
 - **ANTHROPIC_API_KEY** environment variable set
 
 ```bash
-# Set your API key (required for gen, improve, garden commands)
+# Set your API key (required for gen, improve, crawler commands)
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -298,11 +298,11 @@ $ niwa graph
 #### Scenario 3: Auto-learning from session logs
 
 ```bash
-# Initialize garden monitoring (one-time setup)
-$ niwa garden init claude-code
+# Initialize crawler monitoring (one-time setup)
+$ niwa crawler init claude-code
 
 # Process recent sessions (last 5 days, max 10 files)
-$ niwa garden --recent-days 5 --limit 10
+$ niwa crawler run --recent-days 5 --limit 10
 
 # Check what was learned
 $ niwa list
@@ -419,9 +419,9 @@ let graph = db.graph().build_graph().await?;
 - [x] `niwa improve` command
 - [x] LLM-powered extraction
 
-### ✅ Phase 5: Gardener (Complete)
+### ✅ Phase 5: Crawler (Complete)
 - [x] Session log parser
-- [x] `niwa garden` command
+- [x] `niwa crawler` command
 - [x] claude-code / cursor presets
 - [x] Auto-learning from session logs
 - [x] Deduplication via file hashing

@@ -1,11 +1,11 @@
-//! Integration tests for garden command
+//! Integration tests for crawler command
 
 use niwa_core::{Database, StorageOperations};
 use std::fs;
 use tempfile::TempDir;
 
 #[tokio::test]
-async fn test_garden_processes_new_sessions() {
+async fn test_crawler_processes_new_sessions() {
     // Setup test directory with session files
     let temp_dir = TempDir::new().unwrap();
     let sessions_dir = temp_dir.path().join("sessions");
@@ -32,9 +32,9 @@ async fn test_garden_processes_new_sessions() {
     let expertises = db.storage().list_all().await.unwrap();
     assert_eq!(expertises.len(), 0, "Database should start empty");
 
-    // Note: Actual garden command execution would require:
+    // Note: Actual crawler command execution would require:
     // 1. Running the CLI binary
-    // 2. Or refactoring garden logic into testable functions
+    // 2. Or refactoring crawler logic into testable functions
 
     // For now, verify the test infrastructure is working
     assert!(db_path.exists());

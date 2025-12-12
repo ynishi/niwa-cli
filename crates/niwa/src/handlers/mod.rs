@@ -1,6 +1,6 @@
 //! Command handlers
 
-pub mod garden;
+pub mod crawler;
 pub mod gen;
 pub mod graph;
 pub mod list;
