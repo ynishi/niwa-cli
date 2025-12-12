@@ -671,40 +671,81 @@ async fn is_file_processed(
     }
 }
 
+/// Maximum file size for in-memory processing (500KB)
+/// Files larger than this will be processed using file attachment to avoid ARG_MAX limits
+const MAX_IN_MEMORY_SIZE: u64 = 500 * 1024;
+
 /// Process a session file and generate expertise
+///
+/// For small files (<500KB), the content is passed directly to the LLM.
+/// For large files (>=500KB), the file is passed as an attachment to avoid command-line
+/// argument length limitations. Large files may generate multiple expertises.
 async fn process_session_file(
     app: &AppState,
     file_path: &Path,
     file_hash: &str,
     scope: Scope,
 ) -> Result<String, String> {
-    // Read file content
-    let content =
-        std::fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    // Check file size to determine processing method
+    let metadata = std::fs::metadata(file_path)
+        .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    let file_size = metadata.len();
 
     // Generate fallback expertise ID from file name (used if LLM doesn't provide a good one)
     let fallback_id = generate_expertise_id(file_path);
 
     debug!("Fallback expertise ID: {}", fallback_id);
+    debug!("File size: {} bytes", file_size);
 
-    // Generate expertise using LLM (LLM may suggest a better ID based on content)
-    let expertise = app
-        .generator
-        .generate_from_log(&content, &fallback_id, scope)
-        .await
-        .map_err(|e| format!("Failed to generate expertise: {}", e))?;
+    let expertises = if file_size < MAX_IN_MEMORY_SIZE {
+        // Small file: use in-memory processing
+        debug!("Using in-memory processing (file size < {}KB)", MAX_IN_MEMORY_SIZE / 1024);
 
-    // Get the actual ID (may be LLM-suggested or fallback)
-    let expertise_id = expertise.id().to_string();
+        // Read file content
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
 
-    // Store in database
-    app.db
-        .storage()
-        .create(expertise)
-        .await
-        .map_err(|e| format!("Failed to store expertise: {}", e))?;
+        // Generate expertise using LLM
+        let expertise = app
+            .generator
+            .generate_from_log(&content, &fallback_id, scope)
+            .await
+            .map_err(|e| format!("Failed to generate expertise: {}", e))?;
 
-    // Record as processed
+        vec![expertise]
+    } else {
+        // Large file: use file attachment processing
+        info!(
+            "Using file-based processing (file size: {}KB)",
+            file_size / 1024
+        );
+
+        // Generate expertise(s) using file attachment (may return multiple)
+        app.generator
+            .generate_from_file(file_path, &fallback_id, scope)
+            .await
+            .map_err(|e| format!("Failed to generate expertise from file: {}", e))?
+    };
+
+    // Store all generated expertises
+    let mut expertise_ids = Vec::new();
+    for expertise in expertises {
+        let expertise_id = expertise.id().to_string();
+        expertise_ids.push(expertise_id.clone());
+
+        app.db
+            .storage()
+            .create(expertise)
+            .await
+            .map_err(|e| format!("Failed to store expertise {}: {}", expertise_id, e))?;
+
+        info!("Stored expertise: {}", expertise_id);
+    }
+
+    // Record as processed (use first ID only, even if multiple)
+    // Note: We only track the first expertise ID to satisfy foreign key constraints
+    let primary_id = expertise_ids[0].clone();
+
     let path_str = file_path.to_string_lossy();
     let processed_at = chrono::Utc::now().timestamp();
 
@@ -716,13 +757,18 @@ async fn process_session_file(
     )
     .bind(&*path_str)
     .bind(file_hash)
-    .bind(&expertise_id)
+    .bind(&primary_id)
     .bind(processed_at)
     .execute(app.db.pool())
     .await
     .map_err(|e| format!("Failed to record processed session: {}", e))?;
 
-    Ok(expertise_id)
+    // Return summary message
+    if expertise_ids.len() == 1 {
+        Ok(primary_id)
+    } else {
+        Ok(format!("{} (+{} more)", primary_id, expertise_ids.len() - 1))
+    }
 }
 
 /// Generate expertise ID from file path

@@ -30,7 +30,21 @@ pub struct ExpertiseResponse {
     pub fragments: Vec<String>,
 }
 
-/// Agent for extracting structured expertise from conversation logs
+/// Response for extracting multiple expertises from large session logs
+///
+/// This structure allows the LLM to extract multiple distinct expertises from a single
+/// large conversation log that covers multiple topics or domains.
+#[type_marker]
+#[derive(Serialize, Deserialize, Debug, Clone, ToPrompt)]
+#[prompt(mode = "full")]
+pub struct MultiExpertiseResponse {
+    /// List of extracted expertises
+    /// For large sessions containing multiple distinct topics, extract each as a separate expertise.
+    /// Each expertise should represent a coherent, self-contained knowledge domain.
+    pub expertises: Vec<ExpertiseResponse>,
+}
+
+/// Agent for extracting structured expertise from conversation logs (text-based)
 #[agent(
     expertise = r#"You are an expert at extracting DOMAIN-SPECIFIC KNOWLEDGE from development conversation logs.
 
@@ -70,6 +84,58 @@ Output a single, valid JSON object with the structure defined by the `ExpertiseR
     backend = "claude"
 )]
 pub struct ExpertiseExtractorAgent;
+
+/// Agent for extracting multiple expertises from large session files (file attachment-based)
+///
+/// This agent is designed to handle large session logs by reading them as file attachments,
+/// avoiding command-line argument length limitations. It can extract multiple distinct
+/// expertises from a single large session that covers multiple topics.
+#[agent(
+    expertise = r#"You are an expert at extracting DOMAIN-SPECIFIC KNOWLEDGE from large development conversation logs.
+
+The attached session file may contain multiple distinct topics or knowledge domains. Your task is to:
+1. Read and analyze the entire attached session log file
+2. Identify DISTINCT knowledge domains or topics discussed (not just different aspects of the same topic)
+3. Extract each significant domain as a separate expertise
+
+## EXTRACT (High Priority)
+- **Domain concepts** unique to this project
+- **Project-specific patterns** and their rationale
+- **API behaviors** or undocumented quirks discovered during development
+- **Bug patterns** and root causes (what failed, why, how it was fixed)
+- **Architecture decisions** and trade-offs made
+- **Integration patterns** with external services or APIs
+- **Data model relationships** and constraints
+
+## DO NOT EXTRACT
+- Generic tool usage (how to use grep, git, IDE features)
+- System prompt contents or AI operational guidelines
+- Common programming patterns available in public documentation
+- Session setup, greetings, or initialization messages
+- General best practices that any developer would know
+
+## Multi-Expertise Extraction Guidelines
+- If the session covers 2-5 DISTINCT domains, extract each as a separate expertise
+- If the session focuses on a single domain with multiple aspects, create ONE comprehensive expertise
+- Each expertise should be self-contained and represent a coherent knowledge domain
+- Avoid creating too many micro-expertises (minimum 5 fragments per expertise)
+
+## Output Requirements (for each expertise)
+1. Generate a meaningful suggested_id (lowercase, hyphenated, 3-5 words) that captures the DOMAIN topic
+   - Good: "yesod-bitemporal-member-delta", "google-connector-pagination-handling"
+   - Bad: "session-123", "read-only-mode", "code-exploration"
+2. Extract a description focusing on the PROJECT-SPECIFIC knowledge
+3. Identify 3-5 domain-relevant tags
+4. Extract 5-10 knowledge fragments that:
+   - Would NOT be in LLM training data (project-specific, recent, internal)
+   - Represent decisions/learnings from actual implementation work
+   - Help understand "WHY" not just "WHAT"
+
+Output a JSON object with an 'expertises' array containing 1-5 expertise objects."#,
+    output = "MultiExpertiseResponse",
+    backend = "claude"
+)]
+pub struct FileBasedExpertiseExtractorAgent;
 
 // ============================================================================
 // Expertise Improvement

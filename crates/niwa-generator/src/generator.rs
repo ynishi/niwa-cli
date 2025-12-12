@@ -2,11 +2,12 @@
 
 use crate::agents::{
     ExpertiseExtractorAgent, ExpertiseImproverAgent, ExpertiseLinkerAgent, ExpertiseMergerAgent,
-    ExpertiseSummary, InteractiveExpertiseAgent, SuggestedLink,
+    ExpertiseSummary, FileBasedExpertiseExtractorAgent, InteractiveExpertiseAgent, SuggestedLink,
 };
 use crate::Result;
-use llm_toolkit::Agent;
+use llm_toolkit::{attachment::Attachment, agent::Payload, Agent, AgentError};
 use niwa_core::{Expertise, Scope};
+use std::path::Path;
 use tracing::{debug, error, info};
 
 /// Generation options
@@ -164,6 +165,146 @@ impl ExpertiseGenerator {
                 }
 
                 Ok(expertise)
+            }
+            Err(e) => {
+                // Agent error - return error
+                error!("LLM generation failed: {:?}", e);
+                Err(e.into())
+            }
+        }
+    }
+
+    /// Generate one or more Expertises from a session log file
+    ///
+    /// This method is designed to handle large session files by using file attachments
+    /// instead of passing the entire content as a command-line argument. It can extract
+    /// multiple distinct expertises from a single large session.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_path` - Path to the session log file
+    /// * `fallback_id_prefix` - ID prefix for generated expertises (e.g., "session-abc")
+    /// * `scope` - Scope for the generated expertises
+    ///
+    /// # Returns
+    ///
+    /// A vector of generated Expertise objects (may contain 1-5 expertises depending on content)
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use niwa_generator::ExpertiseGenerator;
+    /// use niwa_core::Scope;
+    /// use std::path::Path;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> anyhow::Result<()> {
+    ///     let generator = ExpertiseGenerator::new().await?;
+    ///     let file_path = Path::new("session.jsonl");
+    ///
+    ///     let expertises = generator
+    ///         .generate_from_file(file_path, "session-abc", Scope::Personal)
+    ///         .await?;
+    ///
+    ///     println!("Generated {} expertise(s)", expertises.len());
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn generate_from_file(
+        &self,
+        file_path: &Path,
+        fallback_id_prefix: &str,
+        scope: Scope,
+    ) -> Result<Vec<Expertise>> {
+        info!(
+            "Generating expertise from file: path={}, fallback_prefix={}",
+            file_path.display(),
+            fallback_id_prefix
+        );
+
+        // Create file attachment
+        let attachment = Attachment::local(file_path.to_path_buf());
+
+        // Build prompt with file reference
+        let prompt = format!(
+            "Analyze the attached session log file and extract structured expertise.\n\n\
+             The file contains a conversation log. Please read it entirely and extract domain-specific knowledge.\n\
+             If the session covers multiple distinct domains, extract each as a separate expertise."
+        );
+
+        // Create payload with both text and file attachment
+        let payload = Payload::new()
+            .with_text(prompt)
+            .with_attachment(attachment);
+
+        // Use the file-based agent
+        let agent = FileBasedExpertiseExtractorAgent::default();
+
+        match agent.execute(payload).await {
+            Ok(response) => {
+                let mut expertises = Vec::new();
+
+                // Process each expertise in the response
+                for (idx, expertise_resp) in response.expertises.into_iter().enumerate() {
+                    // Use LLM-suggested ID if valid, otherwise use fallback with index
+                    let expertise_id = if is_valid_id(&expertise_resp.suggested_id) {
+                        info!(
+                            "Using LLM-suggested ID: {} (fallback was: {}-{})",
+                            expertise_resp.suggested_id, fallback_id_prefix, idx
+                        );
+                        expertise_resp.suggested_id.clone()
+                    } else {
+                        let fallback = if idx == 0 {
+                            fallback_id_prefix.to_string()
+                        } else {
+                            format!("{}-{}", fallback_id_prefix, idx)
+                        };
+                        info!(
+                            "LLM suggested invalid ID '{}', using fallback: {}",
+                            expertise_resp.suggested_id, fallback
+                        );
+                        fallback
+                    };
+
+                    info!(
+                        "Successfully extracted expertise: id={}, {} tags, {} fragments",
+                        expertise_id,
+                        expertise_resp.tags.len(),
+                        expertise_resp.fragments.len()
+                    );
+
+                    // Convert ExpertiseResponse to Expertise
+                    let mut expertise = Expertise::new(&expertise_id, "1.0.0");
+                    expertise.inner.description = Some(expertise_resp.description);
+                    expertise.inner.tags = expertise_resp.tags;
+                    expertise.metadata.scope = scope;
+
+                    // Add text fragments
+                    use llm_toolkit_expertise::{KnowledgeFragment, WeightedFragment};
+                    for fragment_text in expertise_resp.fragments {
+                        expertise
+                            .inner
+                            .content
+                            .push(WeightedFragment::new(KnowledgeFragment::Text(
+                                fragment_text,
+                            )));
+                    }
+
+                    expertises.push(expertise);
+                }
+
+                if expertises.is_empty() {
+                    error!("No expertises extracted from file");
+                    return Err(crate::error::Error::Agent(AgentError::ProcessError {
+                        status_code: None,
+                        message: "No expertises extracted from session file".to_string(),
+                        is_retryable: false,
+                        retry_after: None,
+                    }));
+                }
+
+                info!("Total expertises generated: {}", expertises.len());
+                Ok(expertises)
             }
             Err(e) => {
                 // Agent error - return error
