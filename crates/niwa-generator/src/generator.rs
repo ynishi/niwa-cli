@@ -5,14 +5,40 @@ use crate::agents::{
     ExpertiseSummary, FileBasedExpertiseExtractorAgent, InteractiveExpertiseAgent, SuggestedLink,
 };
 use crate::Result;
-use llm_toolkit::{attachment::Attachment, agent::Payload, Agent, AgentError};
+use llm_toolkit::{
+    agent::{
+        impls::{ClaudeCodeAgent, CodexAgent, GeminiAgent},
+        Payload,
+    },
+    attachment::Attachment,
+    Agent, AgentError,
+};
 use niwa_core::{Expertise, Scope};
 use std::path::Path;
 use tracing::{debug, error, info};
 
+/// LLM Provider options
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LlmProvider {
+    /// Claude (Anthropic)
+    Claude,
+    /// Gemini (Google)
+    Gemini,
+    /// Codex (OpenAI)
+    Codex,
+}
+
+impl Default for LlmProvider {
+    fn default() -> Self {
+        Self::Claude
+    }
+}
+
 /// Generation options
 #[derive(Debug, Clone)]
 pub struct GenerationOptions {
+    /// LLM provider to use (default: Claude)
+    pub provider: LlmProvider,
     /// Model to use (default: claude-sonnet-4-5)
     pub model: String,
     /// Temperature (0.0-1.0)
@@ -24,6 +50,7 @@ pub struct GenerationOptions {
 impl Default for GenerationOptions {
     fn default() -> Self {
         Self {
+            provider: LlmProvider::default(),
             model: "claude-sonnet-4-5".to_string(),
             temperature: 0.7,
             additional_context: None,
@@ -121,9 +148,31 @@ impl ExpertiseGenerator {
         // - Markdown code block stripping
         // - Type-safe deserialization
         // - Error handling with proper error messages
-        let agent = ExpertiseExtractorAgent::default();
 
-        match agent.execute(prompt.into()).await {
+        // Create agent based on configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = ExpertiseExtractorAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = ExpertiseExtractorAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = ExpertiseExtractorAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+        };
+
+        match response {
             Ok(response) => {
                 // Use LLM-suggested ID if valid, otherwise use fallback
                 let expertise_id = if is_valid_id(&response.suggested_id) {
@@ -237,10 +286,30 @@ impl ExpertiseGenerator {
             .with_text(prompt)
             .with_attachment(attachment);
 
-        // Use the file-based agent
-        let agent = FileBasedExpertiseExtractorAgent::default();
+        // Use the file-based agent with configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = FileBasedExpertiseExtractorAgent::new(backend);
+                agent.execute(payload).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = FileBasedExpertiseExtractorAgent::new(backend);
+                agent.execute(payload).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = FileBasedExpertiseExtractorAgent::new(backend);
+                agent.execute(payload).await
+            }
+        };
 
-        match agent.execute(payload).await {
+        match response {
             Ok(response) => {
                 let mut expertises = Vec::new();
 
@@ -357,10 +426,30 @@ impl ExpertiseGenerator {
             current_json, instruction
         );
 
-        // Use the Agent macro-powered agent
-        let agent = ExpertiseImproverAgent::default();
+        // Use the Agent macro-powered agent with configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = ExpertiseImproverAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = ExpertiseImproverAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = ExpertiseImproverAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+        };
 
-        match agent.execute(prompt.into()).await {
+        match response {
             Ok(response) => {
                 info!(
                     "Successfully improved expertise: {} new fragments, {} to remove",
@@ -478,10 +567,30 @@ impl ExpertiseGenerator {
             prompt.push_str(&format!("\n\nAdditional Context:\n{}", context));
         }
 
-        // Use the Agent macro-powered agent
-        let agent = InteractiveExpertiseAgent::default();
+        // Use the Agent macro-powered agent with configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = InteractiveExpertiseAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = InteractiveExpertiseAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = InteractiveExpertiseAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+        };
 
-        match agent.execute(prompt.into()).await {
+        match response {
             Ok(response) => {
                 info!(
                     "Successfully generated interactive expertise: {} tags, {} fragments",
@@ -562,10 +671,30 @@ impl ExpertiseGenerator {
             expertises_json.join("\n\n---\n\n")
         );
 
-        // Use the Agent macro-powered agent
-        let agent = ExpertiseMergerAgent::default();
+        // Use the Agent macro-powered agent with configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = ExpertiseMergerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = ExpertiseMergerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = ExpertiseMergerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+        };
 
-        match agent.execute(prompt.into()).await {
+        match response {
             Ok(response) => {
                 info!(
                     "Successfully merged expertises: {} tags, {} fragments",
@@ -674,9 +803,30 @@ impl ExpertiseGenerator {
                 .join("\n\n")
         );
 
-        let agent = ExpertiseLinkerAgent::default();
+        // Use the Agent macro-powered agent with configured provider
+        let response = match self.options.provider {
+            LlmProvider::Claude => {
+                let backend = if self.options.model.is_empty() || self.options.model == "claude-sonnet-4-5" {
+                    ClaudeCodeAgent::new()
+                } else {
+                    ClaudeCodeAgent::new().with_model_str(&self.options.model)
+                };
+                let agent = ExpertiseLinkerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Gemini => {
+                let backend = GeminiAgent::new();
+                let agent = ExpertiseLinkerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+            LlmProvider::Codex => {
+                let backend = CodexAgent::new();
+                let agent = ExpertiseLinkerAgent::new(backend);
+                agent.execute(prompt.into()).await
+            }
+        };
 
-        match agent.execute(prompt.into()).await {
+        match response {
             Ok(response) => {
                 let valid_links: Vec<SuggestedLink> = response
                     .suggested_links

@@ -44,7 +44,7 @@ pub use agents::{
     MergedExpertiseResponse, SuggestedLink,
 };
 pub use error::{Error, Result};
-pub use generator::{ExpertiseGenerator, GenerationOptions};
+pub use generator::{ExpertiseGenerator, GenerationOptions, LlmProvider};
 pub use session_log::SessionLogParser;
 
 /// Library version
