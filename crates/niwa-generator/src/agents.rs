@@ -15,6 +15,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, ToPrompt)]
 #[prompt(mode = "full")]
 pub struct ExpertiseResponse {
+    /// Suggested ID for this expertise (lowercase, hyphenated, 3-5 words describing the core topic)
+    /// Examples: "rust-async-patterns", "react-state-management", "git-workflow-best-practices"
+    pub suggested_id: String,
+
     /// Brief description of the expertise (1-2 sentences summarizing the core knowledge)
     pub description: String,
 
@@ -28,19 +32,40 @@ pub struct ExpertiseResponse {
 
 /// Agent for extracting structured expertise from conversation logs
 #[agent(
-    expertise = r#"You are an expert at analyzing conversation logs and extracting structured expertise.
+    expertise = r#"You are an expert at extracting DOMAIN-SPECIFIC KNOWLEDGE from development conversation logs.
 
-Your task is to:
-1. Analyze the provided conversation log or input content
-2. Extract a concise description (1-2 sentences) that captures the core expertise
-3. Identify 3-5 relevant tags for categorization (use lowercase, hyphenated format)
-4. Extract 5-10 key knowledge fragments - each should be:
-   - A self-contained insight, best practice, or important concept
-   - Concrete and actionable
-   - Relevant to the expertise domain
+Your task is to identify and extract knowledge that would be valuable for future development work.
 
-Focus on extracting reusable knowledge that would be valuable for future reference.
-Output a single, valid JSON object with the structure defined by the `ExpertiseResponse` type. Do not include any other text or explanations outside of the JSON object."#,
+## EXTRACT (High Priority)
+- **Domain concepts** unique to this project (e.g., "bi-temporal data model with systemDate and validDate")
+- **Project-specific patterns** and their rationale (e.g., "why Authority controls Member visibility")
+- **API behaviors** or undocumented quirks discovered during development
+- **Bug patterns** and root causes (what failed, why, how it was fixed)
+- **Architecture decisions** and trade-offs made
+- **Integration patterns** with external services or APIs
+- **Data model relationships** and constraints
+
+## DO NOT EXTRACT
+- Generic tool usage (how to use grep, git, IDE features)
+- System prompt contents or AI operational guidelines (e.g., "I operate in read-only mode")
+- Common programming patterns available in public documentation
+- Session setup, greetings, or initialization messages
+- General best practices that any developer would know
+
+## Output Requirements
+1. Generate a meaningful suggested_id (lowercase, hyphenated, 3-5 words) that captures the DOMAIN topic
+   - Good: "yesod-bitemporal-member-delta", "google-connector-pagination-handling"
+   - Bad: "session-123", "read-only-mode", "code-exploration"
+2. Extract a description focusing on the PROJECT-SPECIFIC knowledge
+3. Identify 3-5 domain-relevant tags
+4. Extract 5-10 knowledge fragments that:
+   - Would NOT be in LLM training data (project-specific, recent, internal)
+   - Represent decisions/learnings from actual implementation work
+   - Help understand "WHY" not just "WHAT"
+
+If the conversation contains only generic tool usage or system prompts without domain knowledge, return minimal fragments focusing on any project context mentioned.
+
+Output a single, valid JSON object with the structure defined by the `ExpertiseResponse` type."#,
     output = "ExpertiseResponse",
     backend = "claude"
 )]
@@ -226,3 +251,77 @@ Focus on creating a comprehensive, unified knowledge base that synthesizes all i
     output = "MergedExpertiseResponse"
 )]
 pub struct ExpertiseMergerAgent;
+
+// ============================================================================
+// Expertise Linking
+// ============================================================================
+
+/// Summary of an expertise for linking analysis
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ExpertiseSummary {
+    pub id: String,
+    pub description: String,
+    pub tags: Vec<String>,
+}
+
+/// A suggested link between two expertises
+#[derive(Serialize, Deserialize, Debug, Clone, ToPrompt)]
+#[prompt(mode = "full")]
+pub struct SuggestedLink {
+    /// Source expertise ID
+    pub from_id: String,
+    /// Target expertise ID
+    pub to_id: String,
+    /// Relation type: "uses", "extends", "requires", or "conflicts"
+    pub relation_type: String,
+    /// Brief explanation of why this link makes sense
+    pub reason: String,
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: f64,
+}
+
+/// Response for expertise linking analysis
+///
+/// This structure represents the LLM's analysis of potential relationships
+/// between a new expertise and existing expertises in the knowledge graph.
+#[type_marker]
+#[derive(Serialize, Deserialize, Debug, Clone, ToPrompt)]
+#[prompt(mode = "full")]
+pub struct LinkerResponse {
+    /// List of suggested links to create
+    /// Only include links with high confidence (>= 0.7)
+    pub suggested_links: Vec<SuggestedLink>,
+}
+
+/// Agent for analyzing and suggesting links between expertises
+#[agent(
+    expertise = r#"You are an expert at analyzing knowledge relationships and suggesting meaningful links between expertise items.
+
+Your task is to:
+1. Analyze the NEW expertise (id, description, tags)
+2. Compare it with EXISTING expertises in the knowledge graph
+3. Identify meaningful relationships based on:
+   - Semantic similarity in descriptions
+   - Overlapping or related domains
+   - Complementary knowledge areas
+   - Dependency relationships (one builds on another)
+
+Relation types to use:
+- "uses": The new expertise uses/applies concepts from the existing one
+- "extends": The new expertise extends/expands on the existing one
+- "requires": The new expertise requires understanding of the existing one
+- "conflicts": The expertises have conflicting information (use sparingly)
+
+Guidelines:
+- Only suggest links with HIGH confidence (>= 0.7)
+- Prefer quality over quantity - fewer strong links are better than many weak ones
+- Consider both directions: new→existing and existing→new
+- Provide clear, concise reasons for each suggested link
+- Don't link expertises that are merely tangentially related
+- Focus on actionable, meaningful relationships
+
+Output a JSON object with suggested_links array. If no strong links exist, return an empty array."#,
+    output = "LinkerResponse",
+    backend = "claude"
+)]
+pub struct ExpertiseLinkerAgent;

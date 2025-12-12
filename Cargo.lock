@@ -1228,6 +1228,7 @@ dependencies = [
  "llm-toolkit",
  "niwa-core",
  "niwa-generator",
+ "regex",
  "sen",
  "serde",
  "serde_json",

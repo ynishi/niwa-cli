@@ -39,8 +39,9 @@ pub mod session_log;
 // Re-exports
 pub use agents::{
     ExpertiseExtractorAgent, ExpertiseImprovementResponse, ExpertiseImproverAgent,
-    ExpertiseMergerAgent, ExpertiseResponse, InteractiveExpertiseAgent,
-    InteractiveExpertiseResponse, MergedExpertiseResponse,
+    ExpertiseLinkerAgent, ExpertiseMergerAgent, ExpertiseResponse, ExpertiseSummary,
+    InteractiveExpertiseAgent, InteractiveExpertiseResponse, LinkerResponse,
+    MergedExpertiseResponse, SuggestedLink,
 };
 pub use error::{Error, Result};
 pub use generator::{ExpertiseGenerator, GenerationOptions};

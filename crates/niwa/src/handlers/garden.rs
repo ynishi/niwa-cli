@@ -3,7 +3,7 @@
 use crate::state::AppState;
 use clap::{Parser, Subcommand};
 use comfy_table::{presets, Table};
-use niwa_core::{Scope, StorageOperations};
+use niwa_core::{RelationType, Scope, StorageOperations};
 use sen::{Args, CliError, CliResult, State};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -34,6 +34,15 @@ pub struct GardenArgs {
     /// Only process files modified in the last N days
     #[arg(long)]
     pub recent_days: Option<u64>,
+
+    /// Automatically link new expertises to existing ones based on shared tags
+    #[arg(long)]
+    pub auto_link: bool,
+
+    /// Automatically detect scope from file path using scope mappings
+    /// (overrides --scope when a matching pattern is found)
+    #[arg(long)]
+    pub auto_scope: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -56,6 +65,33 @@ pub enum GardenCommand {
     /// Remove monitoring path
     Remove {
         /// Path ID to remove
+        id: i64,
+    },
+    /// Manage scope mappings for automatic scope detection
+    Scope {
+        #[command(subcommand)]
+        command: ScopeCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ScopeCommand {
+    /// Add a scope mapping pattern
+    Add {
+        /// Pattern to match (e.g., "projects/company-*", "work/*")
+        pattern: String,
+        /// Scope to assign (personal, company, project)
+        #[arg(short, long)]
+        scope: Scope,
+        /// Priority (higher = checked first, default: 10)
+        #[arg(short, long, default_value = "10")]
+        priority: i32,
+    },
+    /// List all scope mappings
+    List,
+    /// Remove a scope mapping
+    Remove {
+        /// Mapping ID to remove
         id: i64,
     },
 }
@@ -121,6 +157,7 @@ pub async fn garden(state: State<AppState>, Args(args): Args<GardenArgs>) -> Cli
         Some(GardenCommand::Add { path, name }) => handle_add(&app, &path, name.as_deref()).await,
         Some(GardenCommand::List) => handle_list(&app).await,
         Some(GardenCommand::Remove { id }) => handle_remove(&app, id).await,
+        Some(GardenCommand::Scope { command }) => handle_scope(&app, command).await,
         None => {
             // Scan mode
             if let Some(directory) = args.directory {
@@ -132,12 +169,22 @@ pub async fn garden(state: State<AppState>, Args(args): Args<GardenArgs>) -> Cli
                     args.dry_run,
                     args.limit,
                     args.recent_days,
+                    args.auto_link,
+                    args.auto_scope,
                 )
                 .await
             } else {
                 // Scan all registered paths
-                handle_scan_registered(&app, args.scope, args.dry_run, args.limit, args.recent_days)
-                    .await
+                handle_scan_registered(
+                    &app,
+                    args.scope,
+                    args.dry_run,
+                    args.limit,
+                    args.recent_days,
+                    args.auto_link,
+                    args.auto_scope,
+                )
+                .await
             }
         }
     }
@@ -276,10 +323,12 @@ async fn handle_remove(app: &AppState, id: i64) -> CliResult<String> {
 
 async fn handle_scan_registered(
     app: &AppState,
-    scope: Scope,
+    default_scope: Scope,
     dry_run: bool,
     limit: Option<usize>,
     recent_days: Option<u64>,
+    auto_link: bool,
+    auto_scope: bool,
 ) -> CliResult<String> {
     // Get all enabled paths
     let rows: Vec<(String,)> = sqlx::query_as(
@@ -307,7 +356,18 @@ async fn handle_scan_registered(
             continue;
         }
 
-        match handle_scan(app, &path, scope, dry_run, limit, recent_days).await {
+        match handle_scan(
+            app,
+            &path,
+            default_scope,
+            dry_run,
+            limit,
+            recent_days,
+            auto_link,
+            auto_scope,
+        )
+        .await
+        {
             Ok(result) => {
                 all_results.push(format!("\n{}: {}\n{}", path.display(), "✓", result));
             }
@@ -331,10 +391,12 @@ async fn handle_scan_registered(
 async fn handle_scan(
     app: &AppState,
     directory: &Path,
-    scope: Scope,
+    default_scope: Scope,
     dry_run: bool,
     limit: Option<usize>,
     recent_days: Option<u64>,
+    auto_link: bool,
+    auto_scope: bool,
 ) -> CliResult<String> {
     // Verify directory exists
     if !directory.exists() {
@@ -383,15 +445,33 @@ async fn handle_scan(
 
     info!("After recent_days filter: {} files", filtered_files.len());
 
-    // Filter out already processed files
+    // Filter out already processed files and files without meaningful content
+    const MIN_MESSAGES: usize = 3;
+    const MIN_CHARS: usize = 200;
+
     let mut unprocessed_files = Vec::new();
+    let mut skipped_trivial = 0;
+
     for file_path in filtered_files {
+        // First check if the file has meaningful content (fast filter)
+        if !has_meaningful_content(&file_path, MIN_MESSAGES, MIN_CHARS) {
+            skipped_trivial += 1;
+            continue;
+        }
+
         let hash = calculate_file_hash(&file_path)?;
         let is_processed = is_file_processed(app.db.pool(), &file_path, &hash).await?;
 
         if !is_processed {
             unprocessed_files.push((file_path, hash));
         }
+    }
+
+    if skipped_trivial > 0 {
+        info!(
+            "Skipped {} trivial sessions (< {} messages or < {} chars)",
+            skipped_trivial, MIN_MESSAGES, MIN_CHARS
+        );
     }
 
     // Apply limit if specified
@@ -421,19 +501,77 @@ async fn handle_scan(
     let mut processed_count = 0;
     let mut failed_count = 0;
     let mut results = Vec::new();
+    let mut new_expertise_ids = Vec::new();
+    let mut scopes_used: std::collections::HashSet<Scope> = std::collections::HashSet::new();
 
     for (file_path, file_hash) in unprocessed_files {
         info!("Processing: {}", file_path.display());
 
-        match process_session_file(app, &file_path, &file_hash, scope).await {
+        // Determine scope for this file
+        let file_scope = if auto_scope {
+            resolve_scope_from_path(app.db.pool(), &file_path)
+                .await
+                .unwrap_or(default_scope)
+        } else {
+            default_scope
+        };
+        scopes_used.insert(file_scope);
+
+        match process_session_file(app, &file_path, &file_hash, file_scope).await {
             Ok(expertise_id) => {
                 processed_count += 1;
-                results.push(format!("✓ {}: {}", file_path.display(), expertise_id));
+                let scope_indicator = if auto_scope && file_scope != default_scope {
+                    format!(" [{}]", file_scope)
+                } else {
+                    String::new()
+                };
+                results.push(format!(
+                    "✓ {}: {}{}",
+                    file_path.display(),
+                    expertise_id,
+                    scope_indicator
+                ));
+                new_expertise_ids.push((expertise_id, file_scope));
             }
             Err(e) => {
                 failed_count += 1;
                 warn!("Failed to process {}: {}", file_path.display(), e);
                 results.push(format!("✗ {}: {}", file_path.display(), e));
+            }
+        }
+    }
+
+    // Auto-link new expertises based on shared tags (per scope)
+    let mut link_count = 0;
+    if auto_link && !new_expertise_ids.is_empty() {
+        info!("Auto-linking {} new expertises", new_expertise_ids.len());
+
+        // Group by scope and link within each scope
+        for scope in scopes_used {
+            let scope_ids: Vec<String> = new_expertise_ids
+                .iter()
+                .filter(|(_, s)| *s == scope)
+                .map(|(id, _)| id.clone())
+                .collect();
+
+            if scope_ids.is_empty() {
+                continue;
+            }
+
+            match auto_link_expertises(app, &scope_ids, scope).await {
+                Ok(count) => {
+                    link_count += count;
+                    if count > 0 {
+                        results.push(format!(
+                            "\n🔗 Auto-linked: {} relations created (scope: {})",
+                            count, scope
+                        ));
+                    }
+                }
+                Err(e) => {
+                    warn!("Auto-link failed for scope {}: {}", scope, e);
+                    results.push(format!("\n⚠ Auto-link failed ({}): {}", scope, e));
+                }
             }
         }
     }
@@ -445,12 +583,16 @@ async fn handle_scan(
         output.push_str(&format!("{}\n", result));
     }
 
-    output.push_str(&format!(
+    let mut summary = format!(
         "\nSummary: {} processed, {} failed, {} total",
         processed_count,
         failed_count,
         processed_count + failed_count
-    ));
+    );
+    if auto_link && link_count > 0 {
+        summary.push_str(&format!(", {} links", link_count));
+    }
+    output.push_str(&summary);
 
     Ok(output)
 }
@@ -532,17 +674,20 @@ async fn process_session_file(
     let content =
         std::fs::read_to_string(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-    // Generate expertise ID from file name
-    let expertise_id = generate_expertise_id(file_path);
+    // Generate fallback expertise ID from file name (used if LLM doesn't provide a good one)
+    let fallback_id = generate_expertise_id(file_path);
 
-    debug!("Generated expertise ID: {}", expertise_id);
+    debug!("Fallback expertise ID: {}", fallback_id);
 
-    // Generate expertise using LLM
+    // Generate expertise using LLM (LLM may suggest a better ID based on content)
     let expertise = app
         .generator
-        .generate_from_log(&content, &expertise_id, scope)
+        .generate_from_log(&content, &fallback_id, scope)
         .await
         .map_err(|e| format!("Failed to generate expertise: {}", e))?;
+
+    // Get the actual ID (may be LLM-suggested or fallback)
+    let expertise_id = expertise.id().to_string();
 
     // Store in database
     app.db
@@ -602,9 +747,353 @@ fn generate_expertise_id(path: &Path) -> String {
     }
 }
 
+/// Auto-link new expertises to existing ones using LLM-powered LinkerAgent
+async fn auto_link_expertises(
+    app: &AppState,
+    new_ids: &[String],
+    scope: Scope,
+) -> Result<usize, String> {
+    let storage = app.db.storage();
+    let graph = app.db.graph();
+    let mut link_count = 0;
+
+    // Get all existing expertises for comparison
+    let all_expertises = storage
+        .list(scope)
+        .await
+        .map_err(|e| format!("Failed to list expertises: {}", e))?;
+
+    if all_expertises.len() <= 1 {
+        return Ok(0); // Need at least 2 expertises to link
+    }
+
+    // For each new expertise, use LinkerAgent to suggest links
+    for new_id in new_ids {
+        // Get the new expertise
+        let new_expertise = match storage.get(new_id, scope).await {
+            Ok(Some(e)) => e,
+            _ => continue,
+        };
+
+        // Use LinkerAgent to analyze and suggest links
+        let suggested_links = app
+            .generator
+            .suggest_links(&new_expertise, &all_expertises)
+            .await
+            .unwrap_or_default();
+
+        // Create suggested relations
+        for link in suggested_links {
+            // Parse relation type
+            let relation_type = match link.relation_type.to_lowercase().as_str() {
+                "uses" => RelationType::Uses,
+                "extends" => RelationType::Extends,
+                "requires" => RelationType::Requires,
+                "conflicts" => RelationType::Conflicts,
+                _ => RelationType::Uses, // Default to Uses
+            };
+
+            // Check if relation already exists
+            let existing_relations = graph
+                .get_all_relations(&link.from_id)
+                .await
+                .unwrap_or_default();
+
+            let already_linked = existing_relations
+                .iter()
+                .any(|r| r.to_id == link.to_id || r.from_id == link.to_id);
+
+            if !already_linked {
+                // Create relation with reason as metadata
+                if let Ok(()) = graph
+                    .create_relation(
+                        &link.from_id,
+                        &link.to_id,
+                        relation_type,
+                        Some(link.reason.clone()),
+                    )
+                    .await
+                {
+                    info!(
+                        "Auto-linked {} -[{}]-> {} (confidence: {:.2}, reason: {})",
+                        link.from_id, relation_type, link.to_id, link.confidence, link.reason
+                    );
+                    link_count += 1;
+                }
+            }
+        }
+    }
+
+    Ok(link_count)
+}
+
+// ============================================================================
+// Scope Mapping Handlers
+// ============================================================================
+
+async fn handle_scope(app: &AppState, command: ScopeCommand) -> CliResult<String> {
+    match command {
+        ScopeCommand::Add {
+            pattern,
+            scope,
+            priority,
+        } => handle_scope_add(app, &pattern, scope, priority).await,
+        ScopeCommand::List => handle_scope_list(app).await,
+        ScopeCommand::Remove { id } => handle_scope_remove(app, id).await,
+    }
+}
+
+async fn handle_scope_add(
+    app: &AppState,
+    pattern: &str,
+    scope: Scope,
+    priority: i32,
+) -> CliResult<String> {
+    let now = chrono::Utc::now().timestamp();
+
+    sqlx::query(
+        r#"
+        INSERT INTO scope_mappings (pattern, scope, priority, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(pattern) DO UPDATE SET
+            scope = excluded.scope,
+            priority = excluded.priority,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(pattern)
+    .bind(scope.as_str())
+    .bind(priority)
+    .bind(now)
+    .bind(now)
+    .execute(app.db.pool())
+    .await
+    .map_err(|e| CliError::system(format!("Failed to add scope mapping: {}", e)))?;
+
+    Ok(format!(
+        "✓ Added scope mapping: '{}' → {} (priority: {})",
+        pattern, scope, priority
+    ))
+}
+
+async fn handle_scope_list(app: &AppState) -> CliResult<String> {
+    let rows: Vec<(i64, String, String, i32)> = sqlx::query_as(
+        r#"
+        SELECT id, pattern, scope, priority
+        FROM scope_mappings
+        ORDER BY priority DESC, id ASC
+        "#,
+    )
+    .fetch_all(app.db.pool())
+    .await
+    .map_err(|e| CliError::system(format!("Failed to list scope mappings: {}", e)))?;
+
+    if rows.is_empty() {
+        return Ok("No scope mappings configured.\n\nUse 'niwa garden scope add <pattern> --scope <scope>' to add mappings.".to_string());
+    }
+
+    let mut table = Table::new();
+    table.load_preset(presets::UTF8_FULL_CONDENSED);
+    table.set_header(vec!["ID", "Pattern", "Scope", "Priority"]);
+
+    for (id, pattern, scope, priority) in rows {
+        table.add_row(vec![
+            id.to_string(),
+            pattern,
+            scope,
+            priority.to_string(),
+        ]);
+    }
+
+    Ok(format!("Scope Mappings\n{}", table))
+}
+
+async fn handle_scope_remove(app: &AppState, id: i64) -> CliResult<String> {
+    let result = sqlx::query("DELETE FROM scope_mappings WHERE id = ?")
+        .bind(id)
+        .execute(app.db.pool())
+        .await
+        .map_err(|e| CliError::system(format!("Failed to remove scope mapping: {}", e)))?;
+
+    if result.rows_affected() == 0 {
+        Err(CliError::user(format!(
+            "No scope mapping found with ID: {}",
+            id
+        )))
+    } else {
+        Ok(format!("✓ Removed scope mapping ID: {}", id))
+    }
+}
+
+/// Resolve scope from a file path using scope mappings
+pub async fn resolve_scope_from_path(pool: &sqlx::SqlitePool, path: &Path) -> Option<Scope> {
+    let path_str = path.to_string_lossy();
+
+    // Get all mappings ordered by priority (highest first)
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        r#"
+        SELECT pattern, scope
+        FROM scope_mappings
+        ORDER BY priority DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .ok()?;
+
+    for (pattern, scope_str) in rows {
+        if matches_pattern(&path_str, &pattern) {
+            return scope_str.parse().ok();
+        }
+    }
+
+    None // No match found
+}
+
+/// Check if a Claude JSONL session file has meaningful content
+///
+/// Returns true if the session has:
+/// - At least `min_messages` user/assistant messages combined
+/// - At least `min_chars` total characters in message content
+///
+/// This filters out empty agent initialization logs and trivial sessions.
+fn has_meaningful_content(path: &Path, min_messages: usize, min_chars: usize) -> bool {
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+
+    let reader = std::io::BufReader::new(file);
+    let mut message_count = 0;
+    let mut total_chars = 0;
+
+    for line in std::io::BufRead::lines(reader) {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => continue,
+        };
+
+        // Parse JSON line
+        let json: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Check message type (user or assistant)
+        let msg_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        if msg_type == "user" || msg_type == "assistant" {
+            message_count += 1;
+
+            // Extract content from message
+            if let Some(message) = json.get("message") {
+                // Handle Claude API format: message.content array
+                if let Some(content_array) = message.get("content").and_then(|c| c.as_array()) {
+                    for content_item in content_array {
+                        if let Some(text) = content_item.get("text").and_then(|t| t.as_str()) {
+                            total_chars += text.len();
+                        }
+                    }
+                }
+                // Handle simple string content
+                else if let Some(content_str) = message.get("content").and_then(|c| c.as_str()) {
+                    total_chars += content_str.len();
+                }
+                // Handle direct message as string (user messages)
+                else if let Some(msg_str) = message.as_str() {
+                    total_chars += msg_str.len();
+                }
+            }
+        }
+
+        // Early exit if we've already met the criteria
+        if message_count >= min_messages && total_chars >= min_chars {
+            return true;
+        }
+    }
+
+    message_count >= min_messages && total_chars >= min_chars
+}
+
+/// Match a path against a glob-like pattern
+/// Supports:
+/// - `*` matches any sequence of characters (except /)
+/// - `**` matches any sequence including /
+/// - `[...]` character classes (e.g., `[0-9]`, `[a-z]`)
+/// - Literal text matches exactly
+fn matches_pattern(path: &str, pattern: &str) -> bool {
+    // Extract and preserve character classes [...] before escaping
+    let mut result = String::new();
+    let mut chars = pattern.chars().peekable();
+    let mut char_classes: Vec<String> = Vec::new();
+
+    while let Some(c) = chars.next() {
+        if c == '[' {
+            // Collect the entire character class
+            let mut class = String::from("[");
+            while let Some(&next) = chars.peek() {
+                chars.next();
+                class.push(next);
+                if next == ']' {
+                    break;
+                }
+            }
+            // Replace with placeholder (use unique marker)
+            result.push_str(&format!("__CHARCLASS{}__", char_classes.len()));
+            char_classes.push(class);
+        } else {
+            result.push(c);
+        }
+    }
+
+    // Simple glob matching
+    let pattern = result.replace("**", "__DOUBLESTAR__");
+    let pattern = pattern.replace('*', "[^/]*");
+    let pattern = pattern.replace("__DOUBLESTAR__", ".*");
+
+    // Escape other regex chars
+    let mut pattern = regex::escape(&pattern)
+        .replace(r"\[\^/\]\*", "[^/]*")
+        .replace(r"\.\*", ".*");
+
+    // Restore character classes (after escaping, the placeholder becomes escaped)
+    for (i, class) in char_classes.iter().enumerate() {
+        pattern = pattern.replace(&format!("__CHARCLASS{}__", i), class);
+    }
+
+    // Match anywhere in the path
+    let regex_pattern = format!("(?i){}", pattern); // Case-insensitive
+
+    regex::Regex::new(&regex_pattern)
+        .map(|re| re.is_match(path))
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_matches_pattern() {
+        // Simple wildcard
+        assert!(matches_pattern("/Users/test/projects/company-foo/file", "company-*"));
+        assert!(matches_pattern("/Users/test/projects/niwa-cli/src", "niwa-*"));
+
+        // Double wildcard
+        assert!(matches_pattern("/Users/test/work/client/project/file", "work/**"));
+
+        // Exact match
+        assert!(matches_pattern("/Users/test/projects/niwa", "niwa"));
+
+        // Character classes
+        assert!(matches_pattern("/Users/test/projects/y1/file", "y[0-9]*"));
+        assert!(matches_pattern("/Users/test/projects/y23/file", "y[0-9]*"));
+        assert!(matches_pattern("/Users/test/projects/y100/file", "y[0-9]*"));
+        assert!(!matches_pattern("/Users/test/projects/yui/file", "y[0-9]*"));
+        assert!(!matches_pattern("/Users/test/projects/ya/file", "y[0-9]*"));
+
+        // No match
+        assert!(!matches_pattern("/Users/test/personal/stuff", "company-*"));
+    }
 
     #[test]
     fn test_generate_expertise_id() {

@@ -46,7 +46,7 @@ pub use error::{Error, Result};
 pub use graph::{GraphOperations, RelationType};
 pub use query::{QueryBuilder, SearchOptions};
 pub use storage::{Storage, StorageOperations};
-pub use types::{Expertise, ExpertiseMetadata, Scope};
+pub use types::{Expertise, ExpertiseMetadata, KnowledgeFragment, Scope, WeightedFragment};
 
 /// Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

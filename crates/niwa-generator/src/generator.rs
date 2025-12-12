@@ -1,8 +1,8 @@
 //! Expertise generator using LLM
 
 use crate::agents::{
-    ExpertiseExtractorAgent, ExpertiseImproverAgent, ExpertiseMergerAgent,
-    InteractiveExpertiseAgent,
+    ExpertiseExtractorAgent, ExpertiseImproverAgent, ExpertiseLinkerAgent, ExpertiseMergerAgent,
+    ExpertiseSummary, InteractiveExpertiseAgent, SuggestedLink,
 };
 use crate::Result;
 use llm_toolkit::Agent;
@@ -95,15 +95,14 @@ impl ExpertiseGenerator {
     pub async fn generate_from_log(
         &self,
         log_content: &str,
-        id: &str,
+        fallback_id: &str,
         scope: Scope,
     ) -> Result<Expertise> {
-        info!("Generating expertise from log: id={}", id);
+        info!("Generating expertise from log: fallback_id={}", fallback_id);
 
         // Build prompt for the agent
         let prompt = format!(
             "Analyze the following conversation log and extract structured expertise.\n\n\
-             Target Expertise ID: {}\n\n\
              =====================================================================\n
              Log Content Start\n
              =====================================================================\n
@@ -112,7 +111,7 @@ impl ExpertiseGenerator {
              Log Content End\n
              =====================================================================\n
              ",
-            id, log_content
+            log_content
         );
 
         // Use the Agent macro-powered agent
@@ -125,14 +124,30 @@ impl ExpertiseGenerator {
 
         match agent.execute(prompt.into()).await {
             Ok(response) => {
+                // Use LLM-suggested ID if valid, otherwise use fallback
+                let expertise_id = if is_valid_id(&response.suggested_id) {
+                    info!(
+                        "Using LLM-suggested ID: {} (fallback was: {})",
+                        response.suggested_id, fallback_id
+                    );
+                    response.suggested_id.clone()
+                } else {
+                    info!(
+                        "LLM suggested invalid ID '{}', using fallback: {}",
+                        response.suggested_id, fallback_id
+                    );
+                    fallback_id.to_string()
+                };
+
                 info!(
-                    "Successfully extracted expertise: {} tags, {} fragments",
+                    "Successfully extracted expertise: id={}, {} tags, {} fragments",
+                    expertise_id,
                     response.tags.len(),
                     response.fragments.len()
                 );
 
                 // Convert ExpertiseResponse to Expertise
-                let mut expertise = Expertise::new(id, "1.0.0");
+                let mut expertise = Expertise::new(&expertise_id, "1.0.0");
                 expertise.inner.description = Some(response.description);
                 expertise.inner.tags = response.tags;
                 expertise.metadata.scope = scope;
@@ -450,6 +465,142 @@ impl ExpertiseGenerator {
             }
         }
     }
+
+    /// Suggest links between a new expertise and existing ones
+    ///
+    /// Uses LLM to analyze semantic relationships based on descriptions and tags.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_expertise` - The newly created expertise to link
+    /// * `existing_expertises` - List of existing expertises to compare against
+    ///
+    /// # Returns
+    ///
+    /// A list of suggested links with confidence scores and reasons
+    pub async fn suggest_links(
+        &self,
+        new_expertise: &Expertise,
+        existing_expertises: &[Expertise],
+    ) -> Result<Vec<SuggestedLink>> {
+        if existing_expertises.is_empty() {
+            return Ok(vec![]);
+        }
+
+        info!(
+            "Analyzing links for expertise: {} against {} existing",
+            new_expertise.id(),
+            existing_expertises.len()
+        );
+
+        // Build summaries for the prompt
+        let new_summary = ExpertiseSummary {
+            id: new_expertise.id().to_string(),
+            description: new_expertise.description(),
+            tags: new_expertise.tags().to_vec(),
+        };
+
+        let existing_summaries: Vec<ExpertiseSummary> = existing_expertises
+            .iter()
+            .filter(|e| e.id() != new_expertise.id()) // Exclude self
+            .map(|e| ExpertiseSummary {
+                id: e.id().to_string(),
+                description: e.description(),
+                tags: e.tags().to_vec(),
+            })
+            .collect();
+
+        if existing_summaries.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Build prompt
+        let prompt = format!(
+            "Analyze potential links for the following NEW expertise:\n\n\
+             NEW EXPERTISE:\n\
+             ID: {}\n\
+             Description: {}\n\
+             Tags: {}\n\n\
+             EXISTING EXPERTISES:\n{}\n\n\
+             Suggest meaningful links between the NEW expertise and existing ones.",
+            new_summary.id,
+            new_summary.description,
+            new_summary.tags.join(", "),
+            existing_summaries
+                .iter()
+                .map(|s| format!("- ID: {}\n  Description: {}\n  Tags: {}", s.id, s.description, s.tags.join(", ")))
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        );
+
+        let agent = ExpertiseLinkerAgent::default();
+
+        match agent.execute(prompt.into()).await {
+            Ok(response) => {
+                let valid_links: Vec<SuggestedLink> = response
+                    .suggested_links
+                    .into_iter()
+                    .filter(|link| link.confidence >= 0.7)
+                    .collect();
+
+                info!(
+                    "LinkerAgent suggested {} links (filtered from response)",
+                    valid_links.len()
+                );
+
+                for link in &valid_links {
+                    debug!(
+                        "Suggested: {} -[{}]-> {} (confidence: {:.2}, reason: {})",
+                        link.from_id, link.relation_type, link.to_id, link.confidence, link.reason
+                    );
+                }
+
+                Ok(valid_links)
+            }
+            Err(e) => {
+                debug!("LinkerAgent failed: {:?}", e);
+                // Return empty list on failure (non-critical)
+                Ok(vec![])
+            }
+        }
+    }
+}
+
+/// Validate an expertise ID
+/// Valid IDs are lowercase, hyphenated, 3-50 chars, and contain meaningful words
+fn is_valid_id(id: &str) -> bool {
+    // Basic validation
+    if id.is_empty() || id.len() > 50 || id.len() < 5 {
+        return false;
+    }
+
+    // Must be lowercase and only contain alphanumeric chars and hyphens
+    if !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return false;
+    }
+
+    // Must not start or end with hyphen
+    if id.starts_with('-') || id.ends_with('-') {
+        return false;
+    }
+
+    // Must not contain consecutive hyphens
+    if id.contains("--") {
+        return false;
+    }
+
+    // Should have at least 2 words (at least one hyphen)
+    if !id.contains('-') {
+        return false;
+    }
+
+    // Reject IDs that look like UUIDs or session hashes
+    let parts: Vec<&str> = id.split('-').collect();
+    if parts.iter().any(|p| p.len() == 8 && p.chars().all(|c| c.is_ascii_hexdigit())) {
+        return false;
+    }
+
+    true
 }
 
 #[cfg(test)]
@@ -477,7 +628,11 @@ mod tests {
         // In production, this would be an integration test with LLM available
         match result {
             Ok(expertise) => {
-                assert_eq!(expertise.id(), "rust-expert");
+                // LLM may generate a better ID or use the fallback
+                // Just verify it's a non-empty ID
+                assert!(!expertise.id().is_empty());
+                // And that basic structure is correct
+                assert!(!expertise.description().is_empty());
             }
             Err(_e) => {
                 // LLM not available or parsing failed - expected in test environment
@@ -503,5 +658,35 @@ mod tests {
                 // LLM not available or parsing failed - expected in test environment
             }
         }
+    }
+
+    #[test]
+    fn test_is_valid_id() {
+        // Valid IDs
+        assert!(is_valid_id("rust-error-handling"));
+        assert!(is_valid_id("react-hooks-best-practices"));
+        assert!(is_valid_id("git-branching-workflow"));
+        assert!(is_valid_id("api-v2-migration"));
+
+        // Invalid: too short
+        assert!(!is_valid_id("rust"));
+        assert!(!is_valid_id("a-b"));
+
+        // Invalid: no hyphens
+        assert!(!is_valid_id("rusterrorhandling"));
+
+        // Invalid: uppercase
+        assert!(!is_valid_id("Rust-Error-Handling"));
+
+        // Invalid: starts/ends with hyphen
+        assert!(!is_valid_id("-rust-error"));
+        assert!(!is_valid_id("rust-error-"));
+
+        // Invalid: consecutive hyphens
+        assert!(!is_valid_id("rust--error"));
+
+        // Invalid: looks like UUID/hash
+        assert!(!is_valid_id("agent-8862213c"));
+        assert!(!is_valid_id("session-abcd1234"));
     }
 }
