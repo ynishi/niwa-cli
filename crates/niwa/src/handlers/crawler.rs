@@ -24,6 +24,10 @@ pub enum CrawlerCommand {
         #[arg(value_name = "DIRECTORY")]
         directory: Option<PathBuf>,
 
+        /// Target registered path by preset name (e.g., "claude-code", "orcs-sessions")
+        #[arg(short = 't', long, conflicts_with = "directory")]
+        target: Option<String>,
+
         /// Scope for generated expertises (default: personal)
         #[arg(short, long, default_value = "personal")]
         scope: Scope,
@@ -160,6 +164,7 @@ pub async fn crawler(
     match args.command {
         Some(CrawlerCommand::Run {
             directory,
+            target,
             scope,
             dry_run,
             limit,
@@ -172,6 +177,19 @@ pub async fn crawler(
                 // Explicit directory specified
                 handle_scan(
                     &app, &dir, scope, dry_run, limit, recent_days, auto_link, auto_scope,
+                )
+                .await
+            } else if let Some(target_name) = target {
+                // Target registered path by name
+                handle_scan_target(
+                    &app,
+                    &target_name,
+                    scope,
+                    dry_run,
+                    limit,
+                    recent_days,
+                    auto_link,
+                    auto_scope,
                 )
                 .await
             } else {
@@ -327,6 +345,61 @@ async fn handle_remove(app: &AppState, id: i64) -> CliResult<String> {
     } else {
         Ok(format!("✓ Removed monitoring path ID: {}", id))
     }
+}
+
+async fn handle_scan_target(
+    app: &AppState,
+    target_name: &str,
+    default_scope: Scope,
+    dry_run: bool,
+    limit: Option<usize>,
+    recent_days: Option<u64>,
+    auto_link: bool,
+    auto_scope: bool,
+) -> CliResult<String> {
+    // Get path for the specified target
+    let row: Option<(String,)> = sqlx::query_as(
+        r#"
+        SELECT path
+        FROM garden_paths
+        WHERE preset_name = ? AND enabled = 1
+        "#,
+    )
+    .bind(target_name)
+    .fetch_optional(app.db.pool())
+    .await
+    .map_err(|e| CliError::system(format!("Database error: {}", e)))?;
+
+    let path_str = match row {
+        Some((p,)) => p,
+        None => {
+            return Err(CliError::user(format!(
+                "No enabled monitoring path found with name: '{}'\n\nUse 'niwa crawler list' to see available targets.",
+                target_name
+            )));
+        }
+    };
+
+    let path = PathBuf::from(&path_str);
+
+    if !path.exists() {
+        return Err(CliError::user(format!(
+            "Target path does not exist: {}",
+            path.display()
+        )));
+    }
+
+    handle_scan(
+        app,
+        &path,
+        default_scope,
+        dry_run,
+        limit,
+        recent_days,
+        auto_link,
+        auto_scope,
+    )
+    .await
 }
 
 async fn handle_scan_registered(
