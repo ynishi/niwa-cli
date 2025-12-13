@@ -620,7 +620,7 @@ fn scan_session_files(dir: &Path) -> Result<Vec<PathBuf>, CliError> {
             // Filter by extension
             if let Some(ext) = path.extension() {
                 let ext_str = ext.to_string_lossy().to_lowercase();
-                if matches!(ext_str.as_str(), "log" | "md" | "txt" | "jsonl") {
+                if matches!(ext_str.as_str(), "log" | "md" | "txt" | "jsonl" | "toml") {
                     files.push(path.to_path_buf());
                 }
             }
@@ -1004,14 +1004,27 @@ pub async fn resolve_scope_from_path(pool: &sqlx::SqlitePool, path: &Path) -> Op
     None // No match found
 }
 
-/// Check if a Claude JSONL session file has meaningful content
+/// Check if a session file has meaningful content
 ///
 /// Returns true if the session has:
-/// - At least `min_messages` user/assistant messages combined
-/// - At least `min_chars` total characters in message content
+/// - For JSONL (Claude): At least `min_messages` user/assistant messages combined and `min_chars` total characters
+/// - For TOML (Orcs): File size >= 5KB (heuristic for sessions with actual conversation)
+/// - For other formats: Default to true (process all files)
 ///
 /// This filters out empty agent initialization logs and trivial sessions.
 fn has_meaningful_content(path: &Path, min_messages: usize, min_chars: usize) -> bool {
+    // For TOML files (Orcs sessions), use file size heuristic
+    if let Some(ext) = path.extension() {
+        if ext.to_string_lossy().to_lowercase() == "toml" {
+            // TOML sessions: check if file is >= 5KB (typical for sessions with actual content)
+            if let Ok(metadata) = std::fs::metadata(path) {
+                return metadata.len() >= 5 * 1024; // 5KB threshold
+            }
+            return false;
+        }
+    }
+
+    // For JSONL files (Claude sessions), parse JSON content
     let file = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(_) => return false,
